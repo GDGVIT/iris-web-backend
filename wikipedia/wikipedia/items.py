@@ -11,3 +11,8 @@ import scrapy
 class WikiItem(scrapy.Item):
     name = scrapy.Field()
     link = scrapy.Field()
+
+
+class IndexItem(scrapy.Item):
+    name = scrapy.Field()
+    link = scrapy.Field()
