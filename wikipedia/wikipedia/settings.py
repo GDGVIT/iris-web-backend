@@ -64,7 +64,7 @@ ROBOTSTXT_OBEY = True
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
-   'wikipedia.pipelines.WikipediaPipeline': 300,
+   'wikipedia.pipelines.WikipediaSQLPipeline': 300,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)

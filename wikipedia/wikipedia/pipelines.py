@@ -7,7 +7,8 @@
 
 import sqlite3
 
-class WikipediaPipeline:
+
+class WikipediaSQLPipeline:
     def __init__(self):
         self.create_connection()
         self.create_table()
