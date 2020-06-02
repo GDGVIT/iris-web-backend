@@ -9,7 +9,7 @@ class WikiSpider(scrapy.Spider):
 
     def __init__(self, *args, **kwargs):
         super(WikiSpider, self).__init__(*args, **kwargs)
-        self.start_urls = kwargs.get('start_urls').split(',')
+        self.start_urls = [kwargs.get('start_url')]
         print(self.start_urls)
     
     def parse(self, response):
