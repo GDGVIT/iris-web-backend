@@ -21,17 +21,18 @@
 ## Instructions to run
 
 * Pre-requisites:
-	-  Python and Pip installed
+	-  Python and pip installed
 
-* < directions to install > 
+* First we need to install the dependencies 
 ```bash
-< insert code >
+pip3 install -r requirements.txt
 ```
 
-* < directions to execute >
+* To start the index scraper
 
 ```bash
-< insert code >
+cd wikipedia
+scrapy crawl index_scrape
 ```
 
 ## Contributors
