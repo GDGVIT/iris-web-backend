@@ -22,11 +22,9 @@ class IndexScraper(scrapy.Spider):
         global count
         next_page_first = response.css(".mw-allpages-nav a").xpath("@href").get()
         next_page = response.css(".oo-ui-panelLayout-framed+ .mw-allpages-nav a+ a").xpath('@href').get()
-        print(next_page)
-        print(count)
         if count != 0:
             if next_page is not None:
-                yield response.follow(next_page_first, callback=self.parse)
-        elif count == 0:
+                yield response.follow(next_page, callback=self.parse)
+        else:
             count += 1
             yield response.follow(next_page_first, callback=self.parse)

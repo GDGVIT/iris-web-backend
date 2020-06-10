@@ -9,14 +9,14 @@ class WikiSpider(scrapy.Spider):
 
     def __init__(self, *args, **kwargs):
         super(WikiSpider, self).__init__(*args, **kwargs)
-        self.start_urls = kwargs.get('start_urls').split(',')
+        self.start_urls = [kwargs.get('start_url')]
         print(self.start_urls)
-    
+
     def parse(self, response):
         item = WikiItem()
         page_name = response.css("p > a::text").extract()
         page_url = response.css("p > a").xpath("@href").extract()
         for (name, link) in zip(page_name, page_url):
             item['name'] = name
-            item['link'] = "https://en.wikipedia.org"+link
+            item['link'] = "https://en.wikipedia.org" + link
             yield item
