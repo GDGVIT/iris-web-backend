@@ -28,11 +28,11 @@
 pip3 install -r requirements.txt
 ```
 
-* To start the index scraper
+* To start the scraping script
 
 ```bash
 cd wikipedia
-scrapy crawl index_scrape
+python3 main.py
 ```
 
 ## Contributors
