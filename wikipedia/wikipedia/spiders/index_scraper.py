@@ -22,7 +22,7 @@ class IndexScraper(scrapy.Spider):
         next_page_first = response.css(".mw-allpages-nav a").xpath("@href").get()
         next_page = response.css(".oo-ui-panelLayout-framed+ .mw-allpages-nav a+ a").xpath('@href').get()
         if count != 0:
-            if next_page is not None:
+            if next_page != "/w/index.php?title=Special:AllPages&from=Z%C4%83bala+%28R%C3%A2ul+Negru%29":
                 yield response.follow(next_page, callback=self.parse)
         else:
             count += 1
