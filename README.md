@@ -32,7 +32,7 @@ pip3 install -r requirements.txt
 
 ```bash
 cd wikipedia
-python3 main.py
+python3 -m main.py
 ```
 
 ## Contributors
