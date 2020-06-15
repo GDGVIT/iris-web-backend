@@ -12,7 +12,7 @@
 
 
 ## Functionalities
-- [ ]  Script to scrape the entire Wikipedia Index and store as graph in Neo4j
+- [ ]  Script to scrape the entire Wikipedia Index and store as graph in Postgres
 - [ ]  API to return shortest path between two pages
 
 <br>
