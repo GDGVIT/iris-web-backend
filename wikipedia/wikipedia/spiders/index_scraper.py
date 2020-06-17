@@ -11,6 +11,11 @@ class IndexScraper(scrapy.Spider):
     global count
     ending_page = "/w/index.php?title=Special:AllPages&from=Z%C4%83bala+%28R%C3%A2ul+Negru%29"
     base_url = "https://en.wikipedia.org"
+    custom_settings = {
+        'ITEM_PIPELINES': {
+            'wikipedia.pipelines.WikipediaSQLitePipeline': 300
+        }
+    }
 
     def parse(self, response):
         item = IndexItem()
