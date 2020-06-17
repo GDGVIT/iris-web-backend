@@ -17,7 +17,7 @@ class IndexScraper(scrapy.Spider):
         page_name = response.css(".mw-allpages-chunk a::text").extract()
         page_url = response.css(".mw-allpages-chunk a").xpath("@href").extract()
         for (name, link) in zip(page_name, page_url):
-            item['name'] = name
+            item['name'] = name.upper()
             item['link'] = self.base_url + link
             yield item
         global count

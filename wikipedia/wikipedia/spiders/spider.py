@@ -18,6 +18,6 @@ class WikiSpider(scrapy.Spider):
         page_name = response.css("p > a::text").extract()
         page_url = response.css("p > a").xpath("@href").extract()
         for (name, link) in zip(page_name, page_url):
-            item['name'] = name
+            item['name'] = name.upper()
             item['link'] = self.base_url + link
             yield item
