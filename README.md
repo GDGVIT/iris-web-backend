@@ -8,12 +8,10 @@
 
 ---
 [![DOCS](https://img.shields.io/badge/Documentation-see%20docs-green?style=flat-square&logo=appveyor)](INSERT_LINK_FOR_DOCS_HERE) 
-  [![UI ](https://img.shields.io/badge/User%20Interface-Link%20to%20UI-orange?style=flat-square&logo=appveyor)](INSERT_UI_LINK_HERE)
 
 
 ## Functionalities
-- [ ]  Script to scrape the entire Wikipedia Index and store as graph in Postgres
-- [ ]  API to return shortest path between two pages
+- [X]  API to return shortest path between two pages
 
 <br>
 
@@ -21,7 +19,8 @@
 ## Instructions to run
 
 * Pre-requisites:
-	-  Python and pip installed
+	- Python and pip installed
+	- An active internet connection
 
 * First we need to install the dependencies 
 ```bash
@@ -31,8 +30,8 @@ pip3 install -r requirements.txt
 * To start the scraping script
 
 ```bash
-cd wikipedia
-python3 -m main.py
+export FLASK_APP=main.py
+flask run
 ```
 
 ## Contributors
@@ -42,15 +41,26 @@ python3 -m main.py
 
 
 <td>
-
 Md Hishaam Akhtar
-
 <p align="center">
 <img src="https://media-exp1.licdn.com/dms/image/C5103AQF78B1xleVjmg/profile-displayphoto-shrink_200_200/0?e=1599091200&v=beta&t=h8dPr3Nozs8ZNIJZeLzuGm2Fr2TiN9xdXpcFuCIVg3Q" width="150" height="150" alt="Md Hishaam Akhtar">
 </p>
 <p align="center">
 <a href = "https://github.com/mdhishaamakhtar"><img src = "http://www.iconninja.com/files/241/825/211/round-collaboration-social-github-code-circle-network-icon.svg" width="36" height = "36"/></a>
 <a href = "https://www.linkedin.com/in/md-hishaam-akhtar-812a3019a/">
+<img src = "http://www.iconninja.com/files/863/607/751/network-linkedin-social-connection-circular-circle-media-icon.svg" width="36" height="36" alt="LinkedIn"/>
+</td>
+<td>
+
+Abhishek Kushwaha
+
+<p align="center">
+<img src="https://media-exp1.licdn.com/dms/image/C5103AQHUDNY-Gvm6BQ/profile-displayphoto-shrink_200_200/0?e=1599091200&v=beta&t=xqnJw7HLvqQDuknZP04mUthF2OmMdoJV3F5g096QgRY" width="150" height="150" alt="Abhishek Kushwaha">
+</p>
+<p align="center">
+<a href = "https://github.com/abhishekkushwaha4u"><img src = "http://www.iconninja.com/files/241/825/211/round-collaboration-social-github-code-circle-network-icon.svg" width="36" height = "36"/></a>
+<a href = "https://www.linkedin.com/in/abhishek-kushwaha-b04341194/">
+<img src = "http://www.iconninja.com/files/863/607/751/network-linkedin-social-connection-circular-circle-media-icon.svg" width="36" height="36" alt="LinkedIn"/>
 </td>
 </table>
 <br>
