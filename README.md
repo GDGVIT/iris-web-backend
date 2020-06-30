@@ -21,7 +21,6 @@
 ## Instructions to run
 
 * Pre-requisites:
-<<<<<<< HEAD
 	-  Python and pip installed
 
 * First we need to install the dependencies 
