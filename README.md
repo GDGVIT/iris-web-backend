@@ -58,7 +58,7 @@ Abhishek Kushwaha
 <img src="https://media-exp1.licdn.com/dms/image/C5103AQHUDNY-Gvm6BQ/profile-displayphoto-shrink_200_200/0?e=1599091200&v=beta&t=xqnJw7HLvqQDuknZP04mUthF2OmMdoJV3F5g096QgRY" width="150" height="150" alt="Abhishek Kushwaha">
 </p>
 <p align="center">
-<a href = "https://github.com/abhishekkushwaha4u"><img src = "http://www.iconninja.com/files/241/825/211/round-collaboration-social-github-code-circle-network-icon.svg" width="36" height = "36"/></a>
+<a href = "https://github.com/abhishekkushwaha4u"><img src = "http://www.iconninja.com/files/241/825/211/round-collaboration-social-github-code-circle-network-icon.svg" width="36" height = "36" alt="GitHub"/></a>
 <a href = "https://www.linkedin.com/in/abhishek-kushwaha-b04341194/">
 <img src = "http://www.iconninja.com/files/863/607/751/network-linkedin-social-connection-circular-circle-media-icon.svg" width="36" height="36" alt="LinkedIn"/>
 </td>
