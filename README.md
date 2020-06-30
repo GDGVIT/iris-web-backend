@@ -46,18 +46,13 @@ python3 -m main.py
 Md Hishaam Akhtar
 
 <p align="center">
-<img src="https://instagram.fccu7-1.fna.fbcdn.net/v/t51.2885-15/e35/84488168_124595108923170_2795166731995253471_n.jpg?_nc_ht=instagram.fccu7-1.fna.fbcdn.net&amp;_nc_cat=106&amp;_nc_ohc=r4rAEA_dOacAX9pVCHi&amp;oh=7f050ec636de36343bc186a06f3598ad&amp;oe=5EF71816" width="150" height="150" alt="Md Hishaam Akhtar">
+<img src="https://media-exp1.licdn.com/dms/image/C5103AQF78B1xleVjmg/profile-displayphoto-shrink_200_200/0?e=1599091200&v=beta&t=h8dPr3Nozs8ZNIJZeLzuGm2Fr2TiN9xdXpcFuCIVg3Q" width="150" height="150" alt="Md Hishaam Akhtar">
 </p>
 <p align="center">
 <a href = "https://github.com/mdhishaamakhtar"><img src = "http://www.iconninja.com/files/241/825/211/round-collaboration-social-github-code-circle-network-icon.svg" width="36" height = "36"/></a>
 <a href = "https://www.linkedin.com/in/md-hishaam-akhtar-812a3019a/">
-<img src = "http://www.iconninja.com/files/863/607/751/network-linkedin-social-connection-circular-circle-media-icon.svg" width="36" height="36"/>
-</a>
-</p>
 </td>
-</tr>
-  </table>
-
+</table>
 <br>
 <br>
 
