@@ -12,7 +12,7 @@
 
 
 ## Functionalities
-- [ ]  Script to scrape the entire Wikipedia Index and store as graph in Neo4j
+- [ ]  Script to scrape the entire Wikipedia Index and store as graph in Postgres
 - [ ]  API to return shortest path between two pages
 
 <br>
@@ -28,11 +28,11 @@
 pip3 install -r requirements.txt
 ```
 
-* To start the index scraper
+* To start the scraping script
 
 ```bash
 cd wikipedia
-scrapy crawl index_scrape
+python3 -m main.py
 ```
 
 ## Contributors
