@@ -11,7 +11,8 @@
 
 
 ## Functionalities
-- [X]  API to return shortest path between two pages
+- [X] API to return shortest path between two pages
+- [X] Visualization Tool
 
 <br>
 
@@ -21,19 +22,39 @@
 * Pre-requisites:
 	- Python and pip installed
 	- An active internet connection
+	
+* Create and activate the virtual environment
+```bash
+sudo pip3 install virtualenv
+virtualenv env
+```
+* Now for Windows:
+```bash
+.\env\Scripts\activate
+```
 
-* First we need to install the dependencies 
+* For MacOS and Linux
+```bash
+source env/bin/activate
+```
+
+* Install the dependencies 
 ```bash
 pip3 install -r requirements.txt
 ```
 
-* To start the scraping script
+* To start the server
 
 ```bash
 export FLASK_APP=main.py
 flask run
 ```
 
+* To start the visualization tool
+
+```bash
+python3 vis.py
+```
 ## Contributors
 
 <table>
