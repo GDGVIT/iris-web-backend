@@ -11,7 +11,8 @@
 
 
 ## Functionalities
-- [X]  API to return shortest path between two pages
+- [X] API to return shortest path between two pages
+- [X] Visualization Tool
 
 <br>
 
@@ -21,19 +22,39 @@
 * Pre-requisites:
 	- Python and pip installed
 	- An active internet connection
+	
+* Create and activate the virtual environment
+```bash
+sudo pip3 install virtualenv
+virtualenv env
+```
+* Now for Windows:
+```bash
+.\env\Scripts\activate
+```
 
-* First we need to install the dependencies 
+* For MacOS and Linux
+```bash
+source env/bin/activate
+```
+
+* Install the dependencies 
 ```bash
 pip3 install -r requirements.txt
 ```
 
-* To start the scraping script
+* To start the server
 
 ```bash
 export FLASK_APP=main.py
 flask run
 ```
 
+* To start the visualization tool
+
+```bash
+python3 vis.py
+```
 ## Contributors
 
 <table>
@@ -41,7 +62,9 @@ flask run
 
 
 <td>
+
 Md Hishaam Akhtar
+
 <p align="center">
 <img src="https://media-exp1.licdn.com/dms/image/C5103AQF78B1xleVjmg/profile-displayphoto-shrink_200_200/0?e=1599091200&v=beta&t=h8dPr3Nozs8ZNIJZeLzuGm2Fr2TiN9xdXpcFuCIVg3Q" width="150" height="150" alt="Md Hishaam Akhtar">
 </p>
@@ -62,6 +85,22 @@ Abhishek Kushwaha
 <a href = "https://www.linkedin.com/in/abhishek-kushwaha-b04341194/">
 <img src = "http://www.iconninja.com/files/863/607/751/network-linkedin-social-connection-circular-circle-media-icon.svg" width="36" height="36" alt="LinkedIn"/>
 </td>
+
+<td>
+
+Sharanya Mukherjee
+
+<p align="center">
+<img src="https://media-exp1.licdn.com/dms/image/C5103AQFG6U5n2wua8A/profile-displayphoto-shrink_200_200/0?e=1599696000&v=beta&t=BuWcQtHSl-MrHvNSwD2RZ8fZQbPie8R3kK8tJgT8ztA" width="150" height="150" alt="Sharanya Mukherjee">
+</p>
+<p align="center">
+<a href = "https://github.com/sharanya02"><img src = "http://www.iconninja.com/files/241/825/211/round-collaboration-social-github-code-circle-network-icon.svg" width="36" height = "36" alt="GitHub"/></a>
+<a href = "https://www.linkedin.com/in/sharanya-mukherjee-73a2061a0/">
+<img src = "http://www.iconninja.com/files/863/607/751/network-linkedin-social-connection-circular-circle-media-icon.svg" width="36" height="36" alt="LinkedIn"/>
+
+
+</td>
+
 </table>
 <br>
 <br>
