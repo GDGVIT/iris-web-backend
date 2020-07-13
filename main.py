@@ -53,6 +53,7 @@ def shortest_path():
             "code": 200
 
         }
+        G.clear()
         return make_response(jsonify(payload), 200)
     else:
         payload = {
@@ -75,6 +76,7 @@ def explore():
             "message": 'Here is the path',
             "code": "200"
         }
+        G.clear()
         return make_response(jsonify(payload), 200)
     else:
         payload = {
