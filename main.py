@@ -83,3 +83,7 @@ def explore():
             "code": 404
         }
         return make_response(jsonify(payload), 404)
+
+
+if __name__ == '__main__':
+    app.run()
