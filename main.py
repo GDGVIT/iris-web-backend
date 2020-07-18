@@ -1,6 +1,7 @@
 import wikipediaapi
 import networkx as nx
 from flask import Flask, request, jsonify, make_response
+from flask_cors import CORS
 
 G = nx.Graph()
 wiki = wikipediaapi.Wikipedia('en')
@@ -37,6 +38,7 @@ def sm_graph(page):
 
 
 app = Flask(__name__)
+CORS(app)
 
 
 @app.route("/getPath", methods=['POST'])
