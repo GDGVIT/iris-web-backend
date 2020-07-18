@@ -6,3 +6,4 @@ env
 *.db-journal
 .vscode
 feasibility.txt
+nx.html

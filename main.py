@@ -25,6 +25,17 @@ def build_graph(pages, start_page, end_page):
                 smaller_graph(wiki.page(title))
 
 
+def sm_graph(page):
+    links = page.links
+    for title in sorted(links.keys())[0:10]:
+        G.add_node(title, size=20, title=(wiki.page(title)).summary[0:60])
+        G.add_edge(page.title, title, weight=1)
+        link1 = wiki.page(title).links
+        for t in sorted(link1.keys())[0:10]:
+            G.add_edges_from([(title, t)])
+    return G.edges
+
+
 app = Flask(__name__)
 
 
@@ -42,6 +53,7 @@ def shortest_path():
             "code": 200
 
         }
+        G.clear()
         return make_response(jsonify(payload), 200)
     else:
         payload = {
@@ -50,3 +62,30 @@ def shortest_path():
             "code": 404
         }
         return make_response(jsonify(payload), 404)
+
+
+@app.route("/explore", methods=['POST'])
+def explore():
+    start_page = request.json['start']
+    start = wiki.page(start_page)
+    if start.exists():
+        graph = sm_graph(start)
+        payload = {
+            "error": False,
+            "graph": list(graph),
+            "message": 'Here is the path',
+            "code": "200"
+        }
+        G.clear()
+        return make_response(jsonify(payload), 200)
+    else:
+        payload = {
+            "error": True,
+            "message": "No such page exists",
+            "code": 404
+        }
+        return make_response(jsonify(payload), 404)
+
+
+if __name__ == '__main__':
+    app.run()
