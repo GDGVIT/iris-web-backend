@@ -34,7 +34,7 @@ def sm_graph(page):
         link1 = wiki.page(title).links
         for t in sorted(link1.keys())[0:10]:
             G.add_edges_from([(title, t)])
-    return G.edges
+    return G
 
 
 app = Flask(__name__)
@@ -74,7 +74,8 @@ def explore():
         graph = sm_graph(start)
         payload = {
             "error": False,
-            "graph": list(graph),
+            "edges": list(graph.edges),
+            "nodes": list(graph.nodes),
             "message": 'Here is the path',
             "code": "200"
         }
