@@ -7,3 +7,4 @@ env
 .vscode
 feasibility.txt
 nx.html
+.env
