@@ -20,18 +20,18 @@ def sm_graph(page):
     return G
 
 
-start_page = "JavaScript"
-# end_page = "Italy"
+start_page = "Lion"
+end_page = "Italy"
 
 G1 = sm_graph(wiki.page(start_page))
-# k = nx.shortest_path(G1, start_page, end_page, weight='weight')
-# print(k)
+k = nx.shortest_path(G1, start_page, end_page, weight='weight')
+print(k)
 for g in G.nodes:
-    # if g in k:
-    G.nodes[g]['color'] = "blue"
-    G.nodes[g]['size'] = 20
-# for i in range(0, len(k) - 1):
-#     G[k[i]][k[i + 1]]['color'] = "red"
+    if g in k:
+        G.nodes[g]['color'] = "blue"
+        G.nodes[g]['size'] = 20
+for i in range(0, len(k) - 1):
+    G[k[i]][k[i + 1]]['color'] = "red"
 nt = Network("1080px", "1920px")
 
 nt.from_nx(G1)
