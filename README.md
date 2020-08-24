@@ -2,17 +2,17 @@
 <a href="https://dscvit.com">
 	<img src="https://user-images.githubusercontent.com/30529572/72455010-fb38d400-37e7-11ea-9c1e-8cdeb5f5906e.png" />
 </a>
-	<h2 align="center"> Wiki-Web Backend </h2>
+	<h2 align="center"> Iris Web Backend </h2>
 	<h4 align="center"> This is a service to find the shortest path between two wikipedia pages by going through links in a page <h4>
 </p>
 
 ---
-[![DOCS](https://img.shields.io/badge/Documentation-see%20docs-green?style=flat-square&logo=appveyor)](INSERT_LINK_FOR_DOCS_HERE) 
+[![DOCS](https://img.shields.io/badge/Documentation-see%20docs-green?style=flat-square&logo=appveyor)](https://documenter.getpostman.com/view/9876592/T17Q64bY) 
 
 
 ## Functionalities
 - [X] API to return shortest path between two pages
-- [X] API to return explore route between two pages
+- [X] API to discover nodes from one given page
 - [X] Visualization Tool
 
 <br>
@@ -74,19 +74,6 @@ Md Hishaam Akhtar
 <a href = "https://www.linkedin.com/in/md-hishaam-akhtar-812a3019a/">
 <img src = "http://www.iconninja.com/files/863/607/751/network-linkedin-social-connection-circular-circle-media-icon.svg" width="36" height="36" alt="LinkedIn"/>
 </td>
-<td>
-
-Abhishek Kushwaha
-
-<p align="center">
-<img src="https://media-exp1.licdn.com/dms/image/C5103AQHUDNY-Gvm6BQ/profile-displayphoto-shrink_200_200/0?e=1599091200&v=beta&t=xqnJw7HLvqQDuknZP04mUthF2OmMdoJV3F5g096QgRY" width="150" height="150" alt="Abhishek Kushwaha">
-</p>
-<p align="center">
-<a href = "https://github.com/abhishekkushwaha4u"><img src = "http://www.iconninja.com/files/241/825/211/round-collaboration-social-github-code-circle-network-icon.svg" width="36" height = "36" alt="GitHub"/></a>
-<a href = "https://www.linkedin.com/in/abhishek-kushwaha-b04341194/">
-<img src = "http://www.iconninja.com/files/863/607/751/network-linkedin-social-connection-circular-circle-media-icon.svg" width="36" height="36" alt="LinkedIn"/>
-</td>
-
 <td>
 
 Sharanya Mukherjee
