@@ -12,6 +12,7 @@
 
 ## Functionalities
 - [X] API to return shortest path between two pages
+- [X] API to return explore route between two pages
 - [X] Visualization Tool
 
 <br>

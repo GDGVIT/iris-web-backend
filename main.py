@@ -2,6 +2,8 @@ import wikipediaapi
 import networkx as nx
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
+from decouple import config
+import requests
 
 G = nx.Graph()
 wiki = wikipediaapi.Wikipedia('en')
@@ -34,7 +36,7 @@ def sm_graph(page):
         link1 = wiki.page(title).links
         for t in sorted(link1.keys())[0:10]:
             G.add_edges_from([(title, t)])
-    return G.edges
+    return G
 
 
 app = Flask(__name__)
@@ -43,6 +45,35 @@ CORS(app)
 
 @app.route("/getPath", methods=['POST'])
 def shortest_path():
+    secret_key = config('SECRET_KEY')
+    token = request.headers.get('g-recaptcha-response')
+    remote_address = request.remote_addr
+    if (not token) or (not secret_key):
+        payload = {
+            "error": True,
+            "message": 'No ReCaptcha Response',
+            "code": 400
+        }
+        return make_response(jsonify(payload), 400)
+    url = f'https://www.google.com/recaptcha/api/siteverify?secret={secret_key}&response={token}&remoteip={remote_address}'
+    response = requests.get(url)
+    try:
+        res = response.json()
+        if 'success' in res:
+            if not res['success']:
+                payload = {
+                    "error": True,
+                    "message": 'No ReCaptcha Response',
+                    "code": 400
+                }
+                return make_response(jsonify(payload), 400)
+    except Exception as e:
+        payload = {
+            "error": True,
+            "message": e,
+            "code": 500
+        }
+        return make_response(jsonify(payload), 500)
     start_page = request.json['start']
     end_page = request.json['end']
     start = wiki.page(start_page)
@@ -68,13 +99,45 @@ def shortest_path():
 
 @app.route("/explore", methods=['POST'])
 def explore():
+    secret_key = config('SECRET_KEY')
+    print(secret_key)
+    token = request.headers.get('g-recaptcha-response')
+    remote_address = request.remote_addr
+    if (not token) or (not secret_key):
+        payload = {
+            "error": True,
+            "message": 'No ReCaptcha Response',
+            "code": 400
+        }
+        return make_response(jsonify(payload), 400)
+    url = f'https://www.google.com/recaptcha/api/siteverify?secret={secret_key}&response={token}&remoteip={remote_address}'
+    response = requests.get(url)
+    try:
+        res = response.json()
+        print(res)
+        if 'success' in res:
+            if not res['success']:
+                payload = {
+                    "error": True,
+                    "message": 'No ReCaptcha Response',
+                    "code": 400
+                }
+                return make_response(jsonify(payload), 400)
+    except Exception as e:
+        payload = {
+            "error": True,
+            "message": e,
+            "code": 500
+        }
+        return make_response(jsonify(payload), 500)
     start_page = request.json['start']
     start = wiki.page(start_page)
     if start.exists():
         graph = sm_graph(start)
         payload = {
             "error": False,
-            "graph": list(graph),
+            "edges": list(graph.edges),
+            "nodes": list(graph.nodes),
             "message": 'Here is the path',
             "code": "200"
         }
