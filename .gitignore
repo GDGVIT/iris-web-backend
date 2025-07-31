@@ -8,3 +8,5 @@ env
 feasibility.txt
 nx.html
 .env
+.claude
+CLAUDE.md

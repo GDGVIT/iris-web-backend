@@ -1,22 +1,14 @@
-import os
-from dotenv import load_dotenv
+# DEPRECATED: This file is kept for backward compatibility
+# New configuration is located in the config/ directory
 
-# Load environment variables from the .env file
-basedir = os.path.abspath(os.path.dirname(__file__))
-load_dotenv(os.path.join(basedir, ".env"))
+import warnings
+from config.base import BaseConfig
 
+warnings.warn(
+    "config.py is deprecated. Use configuration classes from config/ directory.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
-class Config:
-    """
-    Sets configuration variables for the Flask application.
-    Loads values from the environment .env file.
-    """
-
-    # Flask settings
-    SECRET_KEY = os.environ.get("SECRET_KEY") or "you-will-never-guess"
-
-    # Google reCAPTCHA settings
-    RECAPTCHA_SECRET_KEY = os.environ.get("RECAPTCHA_SECRET_KEY")
-
-    # Redis and Celery settings
-    REDIS_URL = os.environ.get("REDIS_URL") or "redis://localhost:6379/0"
+# Alias for backward compatibility
+Config = BaseConfig
