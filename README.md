@@ -121,10 +121,6 @@ pytest tests/integration/ -v  # Integration tests
 
 Current test coverage: **81 tests passing** with comprehensive unit and integration coverage.
 
-## Technical Implementation Details
-
-For detailed implementation information, development setup, and deployment instructions, see [CLAUDE.md](./CLAUDE.md).
-
 ## Contributors
 
 This project was developed by:
