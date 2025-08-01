@@ -6,7 +6,6 @@
 	<h4 align="center">A high-performance service for discovering shortest paths between Wikipedia pages using optimized graph algorithms</h4>
 </p>
 
----
 [![DOCS](https://img.shields.io/badge/Documentation-API%20Documentation-green?style=flat-square&logo=appveyor)](./API_DOCUMENTATION.md)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=flat-square&logo=python)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-Web%20Framework-lightgrey?style=flat-square&logo=flask)](https://flask.palletsprojects.com)
@@ -138,8 +137,6 @@ This project was developed by:
 <p align="center">
 	Developed under the mentorship of <a href="https://dscvit.com">DSC VIT</a>
 </p>
-
----
 
 <p align="center">
 	<strong>Iris Wikipedia Pathfinder</strong> - Bridging knowledge through intelligent graph traversal
