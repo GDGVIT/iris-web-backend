@@ -117,6 +117,15 @@ def register_error_handlers(app):
         response = {"error": True, "message": "Resource not found", "code": "NOT_FOUND"}
         return jsonify(response), 404
 
+    @app.errorhandler(405)
+    def handle_method_not_allowed(e):
+        response = {
+            "error": True,
+            "message": "Method not allowed",
+            "code": "METHOD_NOT_ALLOWED",
+        }
+        return jsonify(response), 405
+
     @app.errorhandler(500)
     def handle_internal_error(e):
         app.logger.error(f"Internal server error: {e}")

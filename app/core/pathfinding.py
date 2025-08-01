@@ -141,6 +141,11 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                 logger.info(f"Found {len(links)} links from '{current_page}'")
             except Exception as e:
                 logger.error(f"Failed to get links for {current_page}: {e}")
+                # Re-raise WikipediaAPIError and other critical errors
+                from app.utils.exceptions import WikipediaAPIError, CacheConnectionError
+
+                if isinstance(e, (WikipediaAPIError, CacheConnectionError)):
+                    raise
                 continue
 
             # Process each link
@@ -155,20 +160,31 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
 
                 # Check if already visited
                 visited_check_key = f"{visited_key}:{link}"
-                if self.cache_service.exists(visited_check_key):
+                try:
+                    if self.cache_service.exists(visited_check_key):
+                        continue
+
+                    # Mark as visited and store path (with TTL to prevent accumulation)
+                    self.cache_service.set(
+                        visited_check_key, True, ttl=3600
+                    )  # 1 hour TTL
+                    new_path = current_path + [link]
+                    self.cache_service.set(
+                        f"{paths_key}:{link}", new_path, ttl=3600
+                    )  # 1 hour TTL
+
+                    # Add to queue for next level
+                    self.queue_service.push(
+                        queue_key, {"page": link, "depth": current_depth + 1}
+                    )
+                except Exception as e:
+                    logger.error(f"Cache operation failed for {link}: {e}")
+                    # Re-raise CacheConnectionError and other critical cache errors
+                    from app.utils.exceptions import CacheConnectionError
+
+                    if isinstance(e, CacheConnectionError):
+                        raise
                     continue
-
-                # Mark as visited and store path (with TTL to prevent accumulation)
-                self.cache_service.set(visited_check_key, True, ttl=3600)  # 1 hour TTL
-                new_path = current_path + [link]
-                self.cache_service.set(
-                    f"{paths_key}:{link}", new_path, ttl=3600
-                )  # 1 hour TTL
-
-                # Add to queue for next level
-                self.queue_service.push(
-                    queue_key, {"page": link, "depth": current_depth + 1}
-                )
 
             logger.info(
                 f"Finished processing '{current_page}', queue length: {self.queue_service.length(queue_key)}"

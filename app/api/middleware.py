@@ -240,9 +240,10 @@ def api_endpoint(
 
     def decorator(f):
         # Apply decorators in reverse order (they wrap inside-out)
+        # ValidationError handler should be outer so it catches ValidationError first
         if handle_errors:
-            f = handle_application_errors(f)
             f = handle_validation_errors(f)
+            f = handle_application_errors(f)
 
         if add_cors:
             f = cors_headers(f)

@@ -90,7 +90,7 @@ class ExploreRequest:
     """Request for page exploration."""
 
     start_page: str
-    max_links: Optional[int] = 10
+    max_links: Optional[int] = None
 
     def validate(self) -> bool:
         """Validate the explore request."""

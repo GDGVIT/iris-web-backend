@@ -66,7 +66,7 @@ class TestPathfindingAPI:
         task_id = "test-task-id-123"
 
         # Mock successful task result
-        mock_async_result = mock_celery_task.AsyncResult.return_value
+        mock_async_result = mock_celery_task.mock_async_result
         mock_async_result.state = "SUCCESS"
         mock_async_result.result = {
             "status": "SUCCESS",
@@ -89,7 +89,7 @@ class TestPathfindingAPI:
         task_id = "test-task-id-123"
 
         # Mock failed task result
-        mock_async_result = mock_celery_task.AsyncResult.return_value
+        mock_async_result = mock_celery_task.mock_async_result
         mock_async_result.state = "FAILURE"
         mock_async_result.info = "Path not found"
 
@@ -111,9 +111,10 @@ class TestExploreAPI:
     ):
         """Test successful explore request."""
         # Mock explore service
+        from app.core.models import ExploreResult
+
         mock_explore_service = Mock()
-        mock_explore_result = Mock()
-        mock_explore_result.__dict__ = sample_explore_data
+        mock_explore_result = ExploreResult(**sample_explore_data)
         mock_explore_service.explore_page.return_value = mock_explore_result
         mock_service_factory.return_value = mock_explore_service
 
@@ -127,7 +128,9 @@ class TestExploreAPI:
         data = json.loads(response.data)
         assert data["start_page"] == sample_explore_data["start_page"]
         assert data["nodes"] == sample_explore_data["nodes"]
-        assert data["edges"] == sample_explore_data["edges"]
+        # Edges are serialized as lists, not tuples, in JSON
+        expected_edges = [list(edge) for edge in sample_explore_data["edges"]]
+        assert data["edges"] == expected_edges
 
     def test_explore_invalid_request(self, client):
         """Test explore request with invalid data."""

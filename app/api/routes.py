@@ -234,7 +234,7 @@ def index():
             "GET /health": "Health check",
             "GET /": "API information",
         },
-        "documentation": "https://documenter.getpostman.com/view/9876592/T17Q64bY",
+        "documentation": "./API_DOCUMENTATION.md",
     }
     return jsonify(response_data)
 

@@ -16,10 +16,10 @@ class SearchRequestSchema(Schema):
         error_messages={"required": "End page is required"},
     )
     max_depth = fields.Int(
-        missing=None, validate=validate.Range(min=1, max=10), allow_none=True
+        load_default=None, validate=validate.Range(min=1, max=10), allow_none=True
     )
     algorithm = fields.Str(
-        missing="bfs",
+        load_default="bfs",
         validate=validate.OneOf(["bfs", "bidirectional"]),
         allow_none=True,
     )
@@ -43,7 +43,7 @@ class ExploreRequestSchema(Schema):
         validate=validate.Length(min=1, max=255),
         error_messages={"required": "Start page is required"},
     )
-    max_links = fields.Int(missing=10, validate=validate.Range(min=1, max=50))
+    max_links = fields.Int(load_default=10, validate=validate.Range(min=1, max=50))
 
     @post_load
     def make_request(self, data, **kwargs):
@@ -87,7 +87,7 @@ class TaskStatusSchema(Schema):
 class ErrorResponseSchema(Schema):
     """Schema for error responses."""
 
-    error = fields.Bool(required=True, default=True)
+    error = fields.Bool(required=True, dump_default=True)
     message = fields.Str(required=True)
     code = fields.Str(allow_none=True)
     details = fields.Dict(allow_none=True)
@@ -119,10 +119,7 @@ def validate_request_data(schema_class, data):
         ValidationError: When validation fails
     """
     schema = schema_class()
-    try:
-        return schema.load(data)
-    except ValidationError as e:
-        raise ValidationError(f"Validation failed: {e.messages}")
+    return schema.load(data)  # Let the original ValidationError bubble up
 
 
 def serialize_response(schema_class, data):
