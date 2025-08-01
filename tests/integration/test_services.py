@@ -45,8 +45,13 @@ class TestPathFindingService:
             "start_page": "Page A",
             "end_page": "Page C",
             "search_time": 1.5,
+            "nodes_explored": 10,
         }
-        mock_cache_service.get.return_value = cached_data
+        # Set the cache key that will be used
+        cache_key = "path:Page A:Page C"
+        mock_cache_service.get.side_effect = lambda key: (
+            cached_data if key == cache_key else None
+        )
 
         # Mock path finder (should not be called)
         mock_path_finder = Mock()
@@ -158,7 +163,11 @@ class TestExploreService:
             "edges": [("Test Page", "Link 1"), ("Test Page", "Link 2")],
             "total_links": 2,
         }
-        mock_cache_service.get.return_value = cached_data
+        # The cache key includes max_links (which defaults to None now)
+        cache_key = "explore:Test Page:None"
+        mock_cache_service.get.side_effect = lambda key: (
+            cached_data if key == cache_key else None
+        )
 
         # Create service
         service = ExploreService(mock_wikipedia_client, mock_cache_service)
@@ -247,7 +256,11 @@ class TestWikipediaService:
             "last_modified": "2025-01-01T00:00:00Z",
             "links": None,
         }
-        mock_cache_service.get.return_value = cached_data
+        # The cache key is page_info:page_title
+        cache_key = "page_info:Test Page"
+        mock_cache_service.get.side_effect = lambda key: (
+            cached_data if key == cache_key else None
+        )
 
         service = WikipediaService(mock_wikipedia_client, mock_cache_service)
         result = service.get_page_info("Test Page")

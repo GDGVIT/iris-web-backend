@@ -131,15 +131,18 @@ def mock_celery_task():
     mock_task.result = None
     mock_task.info = None
 
-    # Mock AsyncResult
+    # Mock AsyncResult - this will be the object returned by AsyncResult()
     mock_async_result = Mock()
     mock_async_result.state = "PENDING"
     mock_async_result.result = None
     mock_async_result.info = None
 
-    with patch("app.infrastructure.tasks.find_path_task") as mock_find_path_task:
+    with patch("app.api.routes.find_path_task") as mock_find_path_task:
         mock_find_path_task.delay.return_value = mock_task
-        mock_find_path_task.AsyncResult.return_value = mock_async_result
+        # Make AsyncResult callable and return the same mock instance each time
+        mock_find_path_task.AsyncResult = Mock(return_value=mock_async_result)
+        # Store the mock_async_result on the mock_find_path_task for test access
+        mock_find_path_task.mock_async_result = mock_async_result
         yield mock_find_path_task
 
 

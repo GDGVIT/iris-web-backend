@@ -26,7 +26,8 @@ class TestRedisBasedBFSPathFinder:
         result = pathfinder.find_shortest_path("Page A", "Page B")
 
         # Assert
-        assert result == ["Page A", "Page B"]
+        assert result["path"] == ["Page A", "Page B"]
+        assert "nodes_explored" in result
 
     def test_find_shortest_path_two_hops(
         self, mock_wikipedia_client, mock_cache_service, mock_queue_service
@@ -54,7 +55,8 @@ class TestRedisBasedBFSPathFinder:
         result = pathfinder.find_shortest_path("Page A", "Page B")
 
         # Assert
-        assert result == ["Page A", "Page X", "Page B"]
+        assert result["path"] == ["Page A", "Page X", "Page B"]
+        assert "nodes_explored" in result
 
     def test_find_shortest_path_same_page(
         self, mock_wikipedia_client, mock_cache_service, mock_queue_service
@@ -65,7 +67,8 @@ class TestRedisBasedBFSPathFinder:
         )
 
         result = pathfinder.find_shortest_path("Page A", "Page A")
-        assert result == ["Page A"]
+        assert result["path"] == ["Page A"]
+        assert result["nodes_explored"] == 1
 
     def test_find_shortest_path_invalid_pages(
         self, mock_wikipedia_client, mock_cache_service, mock_queue_service
@@ -215,7 +218,8 @@ class TestRedisBasedBFSPathFinder:
 
         result = pathfinder.find_shortest_path("Page A", "Page B")
 
-        assert result == ["Page A", "Page B"]
+        assert result["path"] == ["Page A", "Page B"]
+        assert "nodes_explored" in result
         # Verify queue operations were called
         assert mock_queue_service.push.called
         assert mock_queue_service.pop.called
@@ -250,7 +254,8 @@ class TestRedisBasedBFSPathFinder:
 
         result = pathfinder.find_shortest_path("Page A", "Page B")
 
-        assert result == ["Page A", "Page B"]
+        assert result["path"] == ["Page A", "Page B"]
+        assert "nodes_explored" in result
         # Verify cache operations were called for visited tracking and path storage
         assert mock_cache_service.set.called
         assert mock_cache_service.get.called
@@ -274,7 +279,8 @@ class TestBidirectionalBFSPathFinder:
         result = pathfinder.find_shortest_path("Page A", "Page B")
 
         # Should work through fallback mechanism
-        assert result == ["Page A", "Page B"]
+        assert result["path"] == ["Page A", "Page B"]
+        assert "nodes_explored" in result
 
 
 class TestPathfindingErrorHandling:
@@ -307,8 +313,17 @@ class TestPathfindingErrorHandling:
         mock_cache_service.exists.side_effect = CacheConnectionError(
             "Redis connection failed"
         )
+        # Mock other cache methods to not raise errors so we reach the exists call
+        mock_cache_service.get.return_value = [
+            "Page A"
+        ]  # Return a path for current page
+        mock_cache_service.set.return_value = None
 
         mock_wikipedia_client.page_exists.return_value = True
+        # Set up links that don't immediately lead to target, forcing visited check
+        mock_wikipedia_client.get_links_bulk.return_value = {
+            "Page A": ["Page C", "Page D"]
+        }
 
         pathfinder = RedisBasedBFSPathFinder(
             mock_wikipedia_client, mock_cache_service, mock_queue_service
