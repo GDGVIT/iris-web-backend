@@ -131,10 +131,5 @@ This project was developed by:
 ## Acknowledgments
 
 <p align="center">
-	Developed under the mentorship of <a href="https://dscvit.com">DSC VIT</a>
+	Made with :heart: by <a href="https://dscvit.com">DSC VIT</a>
 </p>
-
-<p align="center">
-	<strong>Iris Wikipedia Pathfinder</strong> - Bridging knowledge through intelligent graph traversal
-</p>
-
