@@ -128,8 +128,6 @@ This project was developed by:
 - **Md Hishaam Akhtar** - [GitHub](https://github.com/mdhishaamakhtar) | [LinkedIn](https://www.linkedin.com/in/md-hishaam-akhtar-812a3019a/)
 - **Sharanya Mukherjee** - [GitHub](https://github.com/sharanya02) | [LinkedIn](https://www.linkedin.com/in/sharanya-mukherjee-73a2061a0/)
 
-## Acknowledgments
-
 <p align="center">
 	Made with :heart: by <a href="https://dscvit.com">DSC VIT</a>
 </p>
