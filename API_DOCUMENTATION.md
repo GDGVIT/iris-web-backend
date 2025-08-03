@@ -76,13 +76,13 @@ celery -A celery_worker.celery worker --loglevel=info --queues=celery,pathfindin
 
 The application includes a Procfile
 
-**Procfile**
+**Procfile:**
 ```
 web: gunicorn --bind 0.0.0.0:9020 run:app
 worker: celery -A celery_worker.celery worker --loglevel=info
 ```
 
-Usage:
+**Usage:**
 ```bash
 # Using separate processes (recommended for production platforms)
 foreman start
