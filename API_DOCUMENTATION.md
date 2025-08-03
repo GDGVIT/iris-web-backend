@@ -83,7 +83,7 @@ web: ./start.sh
 
 **Usage:**
 ```bash
-# Using separate processes (recommended for production platforms)
+# For production
 foreman start
 
 # Using Heroku (automatically uses Procfile)
