@@ -41,7 +41,6 @@ The project demonstrates expertise in:
 ### ✅ Development Tools
 - **Comprehensive Testing**: Unit and integration tests with 100% pass rate
 - **Environment Management**: Separate configurations for development, testing, and production
-- **Docker Support**: Containerization for consistent deployments
 - **CI/CD Ready**: GitHub Actions integration for automated testing and deployment
 
 ## Core Technologies
@@ -143,10 +142,6 @@ pytest tests/integration/ -v  # Integration tests
 
 Current test coverage: **81 tests passing** with comprehensive unit and integration coverage.
 
-## Technical Implementation Details
-
-For detailed implementation information, development setup, and deployment instructions, see [CLAUDE.md](./CLAUDE.md).
-
 ## Contributors
 
 This project was developed by:
@@ -154,13 +149,6 @@ This project was developed by:
 - **Md Hishaam Akhtar** - [GitHub](https://github.com/mdhishaamakhtar) | [LinkedIn](https://www.linkedin.com/in/md-hishaam-akhtar-812a3019a/)
 - **Sharanya Mukherjee** - [GitHub](https://github.com/sharanya02) | [LinkedIn](https://www.linkedin.com/in/sharanya-mukherjee-73a2061a0/)
 
-## Acknowledgments
-
 <p align="center">
-	Developed under the mentorship of <a href="https://dscvit.com">DSC VIT</a>
+	Made with :heart: by <a href="https://dscvit.com">DSC VIT</a>
 </p>
-
-<p align="center">
-	<strong>Iris Wikipedia Pathfinder</strong> - Bridging knowledge through intelligent graph traversal
-</p>
-

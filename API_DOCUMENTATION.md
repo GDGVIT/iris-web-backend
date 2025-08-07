@@ -74,26 +74,17 @@ celery -A celery_worker.celery worker --loglevel=info --queues=celery,pathfindin
 
 ### 4. Using with Process Managers
 
-The application includes two Procfile options:
+The application includes a Procfile
 
-**Option 1: Separate Processes (Default - Procfile)**
-```
-web: gunicorn --bind 0.0.0.0:9020 run:app
-worker: celery -A celery_worker.celery worker --loglevel=info
-```
-
-**Option 2: Single Process (Procfile.single)**
+**Procfile:**
 ```
 web: ./start.sh
 ```
 
-Usage:
+**Usage:**
 ```bash
-# Using separate processes (recommended for production platforms)
+# For production
 foreman start
-
-# Using single process
-foreman start -f Procfile.single
 
 # Using Heroku (automatically uses Procfile)
 git push heroku main
@@ -101,10 +92,6 @@ git push heroku main
 # Using honcho
 honcho start
 ```
-
-**When to use which:**
-- **Separate processes**: Better for production platforms (Heroku, etc.) that can scale web/worker independently
-- **Single process**: Better for simple deployments or local development with process managers
 
 ## API Endpoints
 
