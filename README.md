@@ -6,10 +6,6 @@
 	<h4 align="center">A high-performance service for discovering shortest paths between Wikipedia pages using optimized graph algorithms</h4>
 </p>
 
-[![DOCS](https://img.shields.io/badge/Documentation-API%20Documentation-green?style=flat-square&logo=appveyor)](./API_DOCUMENTATION.md)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=flat-square&logo=python)](https://python.org)
-[![Flask](https://img.shields.io/badge/Flask-Web%20Framework-lightgrey?style=flat-square&logo=flask)](https://flask.palletsprojects.com)
-[![Redis](https://img.shields.io/badge/Redis-Cache%20%26%20Queue-red?style=flat-square&logo=redis)](https://redis.io)
 
 ## Overview
 
@@ -46,6 +42,32 @@ The project demonstrates expertise in:
 - **Comprehensive Testing**: Unit and integration tests with 100% pass rate
 - **Environment Management**: Separate configurations for development, testing, and production
 - **CI/CD Ready**: GitHub Actions integration for automated testing and deployment
+
+## Core Technologies
+
+[![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Flask](https://img.shields.io/badge/Flask-2.3.3-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com)
+[![Redis](https://img.shields.io/badge/Redis-7.0%2B-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io)
+[![Celery](https://img.shields.io/badge/Celery-5.5.3-37B24D?style=for-the-badge&logo=celery&logoColor=white)](https://docs.celeryproject.org/)
+[![Gunicorn](https://img.shields.io/badge/Gunicorn-23.0.0-499848?style=for-the-badge&logo=gunicorn&logoColor=white)](https://gunicorn.org/)
+
+## Development & Testing
+
+[![pytest](https://img.shields.io/badge/pytest-8.3.3-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white)](https://pytest.org)
+[![Black](https://img.shields.io/badge/Code%20Style-Black-000000?style=for-the-badge&logo=python&logoColor=white)](https://github.com/psf/black)
+[![Coverage](https://img.shields.io/badge/Coverage-81%20Tests%20Passing-success?style=for-the-badge&logo=pytest)](./tests/)
+[![Marshmallow](https://img.shields.io/badge/Validation-Marshmallow-FF6B6B?style=for-the-badge&logo=python)](https://marshmallow.readthedocs.io/)
+
+## Project Information
+
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](./LICENSE)
+[![GDSC VIT](https://img.shields.io/badge/GDSC-VIT-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://dscvit.com)
+[![Documentation](https://img.shields.io/badge/Documentation-API%20Docs-green?style=for-the-badge&logo=gitbook&logoColor=white)](./API_DOCUMENTATION.md)
+
+## Infrastructure
+
+[![Wikipedia API](https://img.shields.io/badge/Wikipedia-API-000000?style=for-the-badge&logo=wikipedia&logoColor=white)](https://www.mediawiki.org/wiki/API:Main_page)
+[![Graph Theory](https://img.shields.io/badge/Algorithm-BFS%20Graph%20Search-FF6B35?style=for-the-badge&logo=graphql&logoColor=white)](./README.md)
 
 ## Quick Start
 
