@@ -12,7 +12,9 @@ def create_app(config_class=None):
     Creates and configures the Flask application instance.
     This is the application factory.
     """
-    app = Flask(__name__)
+    import os
+    static_folder = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
+    app = Flask(__name__, static_folder=static_folder)
 
     # Determine configuration class
     if config_class is None:
