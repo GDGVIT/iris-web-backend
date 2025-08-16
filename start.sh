@@ -7,14 +7,7 @@ set -e  # Exit on any error
 
 echo "🚀 Starting Iris Web Backend..."
 
-# Check if Redis is running
-if ! redis-cli ping > /dev/null 2>&1; then
-    echo "❌ Redis is not running. Please start Redis first:"
-    echo "   redis-server"
-    exit 1
-fi
-
-echo "✅ Redis is running"
+# Redis connectivity will be verified when the application starts
 
 # Check required environment variables
 if [ -z "$SECRET_KEY" ]; then
