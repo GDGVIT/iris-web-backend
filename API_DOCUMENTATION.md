@@ -2,12 +2,13 @@
 
 ## Overview
 
-The Iris Wikipedia Pathfinder API finds the shortest path between two Wikipedia pages using an optimized Redis-based BFS algorithm. The API is built with Flask and uses Celery for asynchronous task processing.
+The Iris Wikipedia Pathfinder API finds the shortest path between two Wikipedia pages using an optimized Redis-based BFS algorithm. The API is built with Flask and uses Celery for asynchronous task processing. It includes an interactive web interface for real-time graph visualization.
 
 ## Base URL
 
 ```
-http://localhost:9020
+API: http://localhost:9020
+Web UI: http://localhost:9020/ui
 ```
 
 ## Quick Start
@@ -112,6 +113,7 @@ Returns basic API information and available endpoints.
     "GET /tasks/status/<task_id>": "Check task status",
     "POST /explore": "Explore page connections",
     "GET /health": "Health check",
+    "GET /ui": "Interactive web interface",
     "GET /": "API information"
   },
   "documentation": "./API_DOCUMENTATION.md"
@@ -334,6 +336,52 @@ curl -X POST http://localhost:9020/cache/clear \
   -H "Content-Type: application/json" \
   -d '{"pattern": "wiki_links:*"}'
 ```
+
+### 7. Interactive Web Interface
+
+**GET /ui**
+
+Serves the interactive web interface for visualizing Wikipedia pathfinding results.
+
+**Features:**
+- **Modern Dark Theme**: Professional dark tech aesthetic with GitHub-inspired colors
+- **Interactive Graph Visualization**: D3.js-powered force-directed graph with physics simulation
+- **Real-Time Pathfinding**: Live progress tracking and result visualization
+- **Dynamic Node Interaction**: Drag-and-drop nodes with intelligent physics
+- **Smart Text Rendering**: Dynamic text truncation based on graph density
+- **Professional Typography**: JetBrains Mono font throughout
+- **Responsive Design**: Works on desktop and mobile devices
+
+**Navigation:**
+```
+http://localhost:9020/ui
+```
+
+**Interface Components:**
+- **Input Section**: Start and end page input fields with validation
+- **Control Buttons**: Find Path and Clear buttons with full-width responsive layout
+- **Graph Visualization**: Interactive D3.js graph with:
+  - Tightly bound physics simulation
+  - Opaque text backgrounds for readability
+  - Centered directional arrows on edges
+  - Color-coded nodes (start: green, end: red, path: blue)
+- **Path Results**: Step-by-step path display with clickable Wikipedia links
+- **Error Handling**: User-friendly error messages and loading states
+
+**Usage:**
+1. Navigate to `/ui` in your browser
+2. Enter Wikipedia page titles in start and end fields
+3. Click "Find Path" to initiate pathfinding
+4. Watch real-time graph visualization
+5. Interact with nodes by dragging them
+6. Click on path steps to visit Wikipedia pages
+
+**Technical Details:**
+- Uses D3.js v7 for graph visualization
+- Implements custom physics simulation with collision detection
+- Automatic text truncation based on node spacing
+- WebSocket-like polling for real-time updates
+- Mobile-responsive CSS Grid layout
 
 ## Error Responses
 

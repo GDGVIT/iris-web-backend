@@ -38,6 +38,12 @@ The project demonstrates expertise in:
 - **Rate Limiting**: Configurable API rate limiting for resource protection
 - **CORS Support**: Cross-origin resource sharing for frontend integration
 
+### ✅ Interactive Visualization
+- **Web-Based UI**: Modern dark-themed interface for interactive pathfinding
+- **Real-Time Graph Visualization**: D3.js-powered interactive graph with physics simulation
+- **Dynamic Features**: Drag-and-drop nodes, responsive layout, smart text truncation
+- **Professional Design**: Clean typography with JetBrains Mono, opaque text backgrounds
+
 ### ✅ Development Tools
 - **Comprehensive Testing**: Unit and integration tests with 100% pass rate
 - **Environment Management**: Separate configurations for development, testing, and production
@@ -45,11 +51,18 @@ The project demonstrates expertise in:
 
 ## Core Technologies
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![Flask](https://img.shields.io/badge/Flask-2.3.3-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com)
-[![Redis](https://img.shields.io/badge/Redis-7.0%2B-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Flask](https://img.shields.io/badge/Flask-3.1.1-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com)
+[![Redis](https://img.shields.io/badge/Redis-6.2.0-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io)
 [![Celery](https://img.shields.io/badge/Celery-5.5.3-37B24D?style=for-the-badge&logo=celery&logoColor=white)](https://docs.celeryproject.org/)
 [![Gunicorn](https://img.shields.io/badge/Gunicorn-23.0.0-499848?style=for-the-badge&logo=gunicorn&logoColor=white)](https://gunicorn.org/)
+
+## Frontend & Visualization
+
+[![D3.js](https://img.shields.io/badge/D3.js-Graph%20Visualization-F9A03C?style=for-the-badge&logo=d3.js&logoColor=white)](https://d3js.org/)
+[![JetBrains Mono](https://img.shields.io/badge/Typography-JetBrains%20Mono-000000?style=for-the-badge&logo=jetbrains&logoColor=white)](https://www.jetbrains.com/lp/mono/)
+[![Dark Theme](https://img.shields.io/badge/UI-Dark%20Tech%20Theme-161B22?style=for-the-badge&logo=github&logoColor=white)](#)
+[![Interactive](https://img.shields.io/badge/UX-Interactive%20Physics-58A6FF?style=for-the-badge&logo=react&logoColor=white)](#)
 
 ## Development & Testing
 
@@ -88,7 +101,9 @@ pip install -r requirements.txt
 ./dev.sh
 ```
 
-The application will be available at `http://localhost:9020`
+The application will be available at:
+- **API**: `http://localhost:9020`
+- **Interactive UI**: `http://localhost:9020/ui`
 
 ### Production Deployment
 ```bash
@@ -110,6 +125,7 @@ Complete API documentation with examples, request/response schemas, and integrat
 - `GET /tasks/status/<task_id>` - Poll task status and retrieve results
 - `POST /explore` - Discover page connections for graph visualization
 - `GET /health` - System health monitoring endpoint
+- `GET /ui` - Interactive web interface for pathfinding visualization
 
 ## Architecture Highlights
 

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wikipedia Path Finder</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Iris: Wikipedia Path Finder</h1>
+            <p>Discover the shortest path between any two Wikipedia pages through connected links</p>
+        </header>
+        
+        <div class="input-section">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="startPage">Start Page</label>
+                    <input type="text" id="startPage" placeholder="Barack Obama" />
+                </div>
+                
+                <div class="form-group">
+                    <label for="endPage">End Page</label>
+                    <input type="text" id="endPage" placeholder="Mathematics" />
+                </div>
+            </div>
+            
+            <div class="button-group">
+                <button id="findPathBtn" class="btn btn-primary" onclick="findPath()">Find Path</button>
+                <button id="clearBtn" class="btn btn-secondary" onclick="clearVisualization()">Clear</button>
+            </div>
+        </div>
+        
+        <div id="error" class="error-message hidden">
+            <p id="errorMessage"></p>
+        </div>
+        
+        <div class="visualization-section" id="visualizationSection">
+            <div class="graph-container" id="graphContainer">
+                <div class="graph-loader" id="graphLoader">
+                    <div class="graph-loader-animation">
+                        <div class="graph-loader-dot"></div>
+                        <div class="graph-loader-dot"></div>
+                        <div class="graph-loader-dot"></div>
+                    </div>
+                    <div>Building your path visualization...</div>
+                </div>
+                <svg id="graph" class="hidden"></svg>
+            </div>
+            
+            <div id="pathStepsContainer" class="path-steps-container hidden">
+                <div class="path-header">
+                    <h3>Path Found</h3>
+                    <div class="path-stats">
+                        <span id="pathLength" class="stat"></span>
+                        <span id="searchTime" class="stat"></span>
+                    </div>
+                </div>
+                <div id="pathSteps" class="path-steps"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/static/script.js"></script>
+</body>
+</html>

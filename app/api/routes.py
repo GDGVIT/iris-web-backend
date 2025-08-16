@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_from_directory, current_app
 from app.api.middleware import api_endpoint
 from app.api.schemas import (
     SearchRequestSchema,
@@ -217,6 +217,42 @@ def clear_cache():
         raise
 
 
+@main.route("/ui")
+@api_endpoint(require_json_content=False, log_request=False)
+def ui():
+    """
+    Serve the path visualization UI.
+    """
+    try:
+        import os
+
+        static_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static"
+        )
+        return send_from_directory(static_dir, "index.html")
+    except Exception as e:
+        logger.error(f"Failed to serve UI: {e}")
+        return jsonify({"error": "UI not available"}), 404
+
+
+@main.route("/static/<path:filename>")
+@api_endpoint(require_json_content=False, log_request=False)
+def static_files(filename):
+    """
+    Serve static files for the UI.
+    """
+    try:
+        import os
+
+        static_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static"
+        )
+        return send_from_directory(static_dir, filename)
+    except Exception as e:
+        logger.error(f"Failed to serve static file {filename}: {e}")
+        return jsonify({"error": "File not found"}), 404
+
+
 @main.route("/", methods=["GET"])
 @api_endpoint(require_json_content=False, log_request=False)
 def index():
@@ -232,9 +268,11 @@ def index():
             "GET /tasks/status/<task_id>": "Check task status",
             "POST /explore": "Explore page connections",
             "GET /health": "Health check",
+            "GET /ui": "Path visualization UI",
             "GET /": "API information",
         },
         "documentation": "./API_DOCUMENTATION.md",
+        "ui_url": "/ui",
     }
     return jsonify(response_data)
 
