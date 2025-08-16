@@ -225,8 +225,11 @@ def ui():
     """
     try:
         import os
-        static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'static')
-        return send_from_directory(static_dir, 'index.html')
+
+        static_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static"
+        )
+        return send_from_directory(static_dir, "index.html")
     except Exception as e:
         logger.error(f"Failed to serve UI: {e}")
         return jsonify({"error": "UI not available"}), 404
@@ -240,7 +243,10 @@ def static_files(filename):
     """
     try:
         import os
-        static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'static')
+
+        static_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static"
+        )
         return send_from_directory(static_dir, filename)
     except Exception as e:
         logger.error(f"Failed to serve static file {filename}: {e}")

@@ -13,7 +13,8 @@ def create_app(config_class=None):
     This is the application factory.
     """
     import os
-    static_folder = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
+
+    static_folder = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
     app = Flask(__name__, static_folder=static_folder)
 
     # Determine configuration class
