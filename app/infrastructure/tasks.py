@@ -82,11 +82,8 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
             progress_data["search_stats"]["start_page"] = start_page
             progress_data["search_stats"]["end_page"] = end_page
             progress_data["search_stats"]["max_depth"] = 6  # From config
-            
-            self.update_state(
-                state="PROGRESS",
-                meta=progress_data
-            )
+
+            self.update_state(state="PROGRESS", meta=progress_data)
 
         # Get pathfinding service with progress callback
         pathfinding_service = get_pathfinding_service(algorithm, progress_update)
@@ -126,7 +123,7 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
                     "end_page": end_page,
                     "max_depth": 6,
                 },
-                "search_time_elapsed": 0
+                "search_time_elapsed": 0,
             },
         )
 

@@ -185,46 +185,39 @@ Polls the status of a pathfinding task.
 **Path Parameters:**
 - `task_id` (string, required): Task ID returned from /getPath
 
-**Response - Task Pending:**
+**Response — PENDING:**
 ```json
 {
-  "status": "PENDING", 
+  "status": "PENDING",
   "task_id": "abc123-def456-ghi789",
   "message": "Task is waiting to be processed"
 }
 ```
 
-**Response - Task In Progress:**
+**Response — IN_PROGRESS:**
 ```json
 {
   "status": "IN_PROGRESS",
-  "task_id": "abc123-def456-ghi789", 
+  "task_id": "abc123-def456-ghi789",
   "progress": {
-    "current": 25,
-    "total": 100,
     "status": "Starting pathfinding search...",
-    "start_page": "Albert Einstein",
-    "end_page": "Physics"
+    "search_stats": {
+      "nodes_explored": 0,
+      "current_depth": 0,
+      "last_node": "Albert Einstein",
+      "queue_size": 1,
+      "start_page": "Albert Einstein",
+      "end_page": "Physics",
+      "max_depth": 6
+    },
+    "search_time_elapsed": 0
   }
 }
 ```
 
-**Progress Status Messages:**
-- `current`: 0 - "Initializing pathfinding..."
-- `current`: 10 - "Validating pages..."
-- `current`: 25 - "Starting pathfinding search..."
-- `current`: 90 - "Finalizing results..." (includes `path_length` and `search_time`)
+Note: The `progress` object mirrors the task's meta and may include additional fields depending on runtime.
 
-**Progress Fields:**
-- `current` (integer): Current progress step (0-100)
-- `total` (integer): Total steps (always 100)
-- `status` (string): Human-readable status message
-- `start_page` (string): Starting Wikipedia page title
-- `end_page` (string): Target Wikipedia page title
-- `path_length` (integer, optional): Length of found path (when finalizing)
-- `search_time` (float, optional): Search time in seconds (when finalizing)
-
-**Response - Task Success:**
+**Response — SUCCESS:**
 ```json
 {
   "status": "SUCCESS",
@@ -233,12 +226,22 @@ Polls the status of a pathfinding task.
     "path": ["Albert Einstein", "Science", "Physics"],
     "length": 3,
     "search_time": 2.45,
-    "nodes_explored": 287
+    "nodes_explored": 287,
+    "search_stats": {
+      "nodes_explored": 287,
+      "final_depth": 2,
+      "start_page": "Albert Einstein",
+      "end_page": "Physics",
+      "max_depth": 6,
+      "search_completed": true
+    }
   }
 }
 ```
 
-**Response - Task Failed:**
+Note: If the underlying task returns a different structure, it may be passed through as-is in `result`.
+
+**Response — FAILURE:**
 ```json
 {
   "status": "FAILURE",
@@ -247,20 +250,16 @@ Polls the status of a pathfinding task.
 }
 ```
 
-**Response - Task Retrying:**
+**Response — Other States (e.g., RETRY):**
 ```json
 {
   "status": "RETRY",
   "task_id": "abc123-def456-ghi789",
-  "info": {
-    "error": "Connection timeout to Wikipedia API",
-    "retry_count": 2,
-    "max_retries": 3,
-    "next_retry_in": 60,
-    "status": "Retrying due to: Connection timeout to Wikipedia API"
-  }
+  "info": "Retrying due to: Connection timeout to Wikipedia API"
 }
 ```
+
+Note: For states other than the above, `info` contains a string description derived from the task's state/meta.
 
 **Example cURL:**
 ```bash
@@ -453,6 +452,9 @@ All endpoints return structured error responses when something goes wrong:
 }
 ```
 
+Note: JSON 404 responses are returned for API-like paths (for example, `/api/...`).
+Requests to non-API paths instead redirect to the main UI (`/`).
+
 **405 Method Not Allowed:**
 ```json
 {
@@ -539,10 +541,10 @@ curl http://localhost:9020/tasks/status/xyz789-abc123-def456
 
 ## Rate Limiting
 
-The API includes basic rate limiting middleware:
-- Default: 100 requests per minute per IP
-- Rate limit headers are included in responses
-- Exceeding limits returns HTTP 429 Too Many Requests
+Basic logging-only rate limiting is present for visibility, but limits are not enforced in this build:
+- Logs each request with a per-IP note; no counters are persisted
+- No `429 Too Many Requests` responses are emitted by default
+- For production-grade limits, plug in a Redis-backed limiter
 
 ## Environment Configuration
 

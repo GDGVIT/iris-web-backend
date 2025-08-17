@@ -69,7 +69,7 @@ The project demonstrates expertise in:
 
 [![pytest](https://img.shields.io/badge/pytest-8.3.3-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white)](https://pytest.org)
 [![Black](https://img.shields.io/badge/Code%20Style-Black-000000?style=for-the-badge&logo=python&logoColor=white)](https://github.com/psf/black)
-[![Coverage](https://img.shields.io/badge/Coverage-81%20Tests%20Passing-success?style=for-the-badge&logo=pytest)](./tests/)
+[![Coverage](https://img.shields.io/badge/Coverage-107%20Tests%20Passing%20(~80%25)-success?style=for-the-badge&logo=pytest)](./tests/)
 [![Marshmallow](https://img.shields.io/badge/Validation-Marshmallow-FF6B6B?style=for-the-badge&logo=python)](https://marshmallow.readthedocs.io/)
 
 ## Project Information
@@ -149,17 +149,24 @@ The core pathfinding algorithm demonstrates advanced system design:
 
 ```bash
 # Run comprehensive test suite
-pytest tests/ -v
+pytest -v
 
-# Run with coverage reporting
-pytest tests/ --cov=app --cov-report=html
+# Run with coverage reporting (console + HTML)
+pytest --cov=app --cov-report=term-missing --cov-report=html
 
 # Test specific components
 pytest tests/unit/ -v      # Unit tests
 pytest tests/integration/ -v  # Integration tests
 ```
 
-Current test coverage: **81 tests passing** with comprehensive unit and integration coverage.
+Current test coverage: **107 tests passing** with approximately **80% line coverage** across the `app/` package (see `htmlcov/index.html` after running coverage for a browsable report).
+
+Key areas covered by new tests:
+- Cache and queue infrastructure with Redis client mocking
+- ServiceFactory lifecycle and Celery task configuration helpers
+- Wikipedia client parsing, batching, and request handling with a fake session
+- API middleware decorators (error handling, CORS, rate limiting, size checks)
+- Logging configuration, including file handler setup for non-testing environments
 
 ## Contributors
 

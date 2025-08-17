@@ -108,6 +108,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         # Simple BFS: process one item at a time from the queue
         nodes_explored = 0
         import time
+
         search_start_time = time.time()
 
         while self.queue_service.length(queue_key) > 0:
@@ -124,20 +125,22 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             )
 
             # Report progress every 3 nodes
-            if (self.progress_callback and nodes_explored % 3 == 0):
+            if self.progress_callback and nodes_explored % 3 == 0:
                 queue_size = self.queue_service.length(queue_key)
                 elapsed_time = time.time() - search_start_time
-                
-                self.progress_callback({
-                    "status": "Searching...",
-                    "search_stats": {
-                        "nodes_explored": nodes_explored,
-                        "current_depth": current_depth,
-                        "last_node": current_page,
-                        "queue_size": queue_size,
-                    },
-                    "search_time_elapsed": round(elapsed_time, 2)
-                })
+
+                self.progress_callback(
+                    {
+                        "status": "Searching...",
+                        "search_stats": {
+                            "nodes_explored": nodes_explored,
+                            "current_depth": current_depth,
+                            "last_node": current_page,
+                            "queue_size": queue_size,
+                        },
+                        "search_time_elapsed": round(elapsed_time, 2),
+                    }
+                )
 
             # Check depth limit
             if current_depth > self.max_depth:

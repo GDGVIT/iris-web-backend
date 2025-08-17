@@ -285,11 +285,11 @@ def api_info():
             "GET /tasks/status/<task_id>": "Check task status",
             "POST /explore": "Explore page connections",
             "GET /health": "Health check",
-            "GET /ui": "Path visualization UI",
+            "GET /": "Path visualization UI",
             "GET /api": "API information",
         },
         "documentation": "./API_DOCUMENTATION.md",
-        "ui_url": "/ui",
+        "ui_url": "/",
     }
     return jsonify(response_data)
 
