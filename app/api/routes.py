@@ -88,6 +88,7 @@ def get_task_status_route(task_id):
                     "length": result.get("length", 0),
                     "search_time": result.get("search_time"),
                     "nodes_explored": result.get("nodes_explored"),
+                    "search_stats": result.get("search_stats"),
                 },
             }
         else:

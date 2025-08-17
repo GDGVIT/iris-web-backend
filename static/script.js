@@ -58,9 +58,15 @@ class PathFinderUI {
             if (e.key === 'Enter') this.findPath();
         });
 
-        // Auto-save state on input changes
-        document.getElementById('startPage').addEventListener('input', () => this.saveCurrentState());
-        document.getElementById('endPage').addEventListener('input', () => this.saveCurrentState());
+        // Auto-save state and update button state on input changes
+        document.getElementById('startPage').addEventListener('input', () => {
+            this.saveCurrentState();
+            this.updateButtonState();
+        });
+        document.getElementById('endPage').addEventListener('input', () => {
+            this.saveCurrentState();
+            this.updateButtonState();
+        });
     }
 
     restoreStateFromStorage() {
@@ -78,6 +84,9 @@ class PathFinderUI {
                 currentTaskId = savedState.taskId;
                 this.showVisualizationSection();
                 this.showProgressLoader();
+                // Ensure header matches saved pages and stats are reset until updates arrive
+                this.resetProgressUI();
+                this.showLoading(); // Disable button for active task
                 this.pollTaskStatus();
             } else if (savedState.result && savedState.result.path) {
                 // Restore completed result
@@ -85,6 +94,9 @@ class PathFinderUI {
                 this.handlePathFound(savedState.result);
             }
         }
+        
+        // Update button state after restoration
+        this.updateButtonState();
     }
 
     saveCurrentState() {
@@ -98,13 +110,62 @@ class PathFinderUI {
         StateManager.save(state);
     }
 
+    updateButtonState() {
+        const startPage = document.getElementById('startPage').value.trim();
+        const endPage = document.getElementById('endPage').value.trim();
+        const savedState = StateManager.load();
+        
+        // Button should be disabled if:
+        // 1. Currently loading (currentTaskId exists)
+        // 2. Input fields are empty
+        // 3. Current inputs match saved completed result (no change)
+        
+        let shouldDisable = false;
+        
+        // Check if currently loading
+        if (currentTaskId) {
+            shouldDisable = true;
+        }
+        // Check if inputs are empty
+        else if (!startPage || !endPage) {
+            shouldDisable = true;
+        }
+        // Check if current inputs match saved completed result
+        else if (savedState && savedState.status === 'COMPLETED' && savedState.result) {
+            const matchesSaved = (
+                startPage === savedState.startPage && 
+                endPage === savedState.endPage
+            );
+            if (matchesSaved) {
+                shouldDisable = true;
+            }
+        }
+        
+        document.getElementById('findPathBtn').disabled = shouldDisable;
+    }
+
+    clearActiveTask() {
+        // Stop any ongoing polling
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+        }
+        
+        // Clear current task ID
+        currentTaskId = null;
+        
+        // Update button state
+        this.updateButtonState();
+    }
+
     showLoading() {
         document.getElementById('findPathBtn').disabled = true;
         document.getElementById('error').classList.add('hidden');
     }
 
     hideLoading() {
-        document.getElementById('findPathBtn').disabled = false;
+        // Use updateButtonState instead of directly enabling
+        this.updateButtonState();
     }
 
     showError(message) {
@@ -116,27 +177,99 @@ class PathFinderUI {
     showVisualizationSection() {
         const section = document.getElementById('visualizationSection');
         section.classList.add('show');
-        this.showGraphLoader();
+        // Show the unified progress loader immediately to avoid flicker
+        this.showProgressLoader();
+        // Reset UI to a clean slate for this run
+        this.resetProgressUI();
     }
 
     showGraphLoader() {
+        const container = document.getElementById('graphContainer');
+        container.classList.add('loading');
         document.getElementById('graphLoader').classList.remove('hidden');
+        document.getElementById('searchProgress').classList.add('hidden');
         document.getElementById('graph').classList.add('hidden');
-        this.updateProgressStatus('Preparing search...');
     }
 
     showProgressLoader() {
-        document.getElementById('graphLoader').classList.remove('hidden');
+        const container = document.getElementById('graphContainer');
+        container.classList.add('loading');
+        document.getElementById('graphLoader').classList.add('hidden');
+        const sp = document.getElementById('searchProgress');
+        sp.classList.remove('hidden');
         document.getElementById('graph').classList.add('hidden');
-        this.updateProgressStatus('Resuming search...');
     }
 
-    updateProgressStatus(status, progress = null) {
-        // Simple loader - no progress tracking needed
+    resetProgressUI() {
+        // Ensure header matches current inputs
+        const startPage = document.getElementById('startPage').value.trim() || '-';
+        const endPage = document.getElementById('endPage').value.trim() || '-';
+        document.getElementById('searchPath').textContent = `${startPage} → ${endPage}`;
+
+        // Zero stats
+        document.getElementById('nodesExplored').textContent = '0';
+        document.getElementById('queueSize').textContent = '0';
+        document.getElementById('elapsedTime').textContent = '0s';
+
+        // Disable last node click
+        const lastNodeEl = document.getElementById('lastNode');
+        lastNodeEl.textContent = '-';
+        lastNodeEl.classList.add('disabled');
+
+        // Reset depth
+        this.updateDepthIndicator(0, 6);
+    }
+
+    updateProgressDisplay(progressData) {
+        if (!progressData || !progressData.search_stats) {
+            return;
+        }
+
+        const stats = progressData.search_stats;
+        
+        // Update search path header
+        document.getElementById('searchPath').textContent = 
+            `${stats.start_page} → ${stats.end_page}`;
+        
+        // Update depth indicator
+        this.updateDepthIndicator(stats.current_depth, stats.max_depth || 6);
+        
+        // Update statistics
+        document.getElementById('nodesExplored').textContent = 
+            stats.nodes_explored?.toLocaleString() || '0';
+        document.getElementById('queueSize').textContent = 
+            stats.queue_size?.toLocaleString() || '0';
+        document.getElementById('elapsedTime').textContent = 
+            `${progressData.search_time_elapsed || 0}s`;
+        const lastNodeEl = document.getElementById('lastNode');
+        const ln = stats.last_node || '-';
+        lastNodeEl.textContent = ln;
+        if (ln && ln !== '-') {
+            lastNodeEl.classList.remove('disabled');
+        } else {
+            lastNodeEl.classList.add('disabled');
+        }
+    }
+
+    updateDepthIndicator(currentDepth, maxDepth) {
+        const dots = document.querySelectorAll('#depthDots .depth-dot');
+        
+        dots.forEach((dot, index) => {
+            dot.classList.remove('active', 'completed');
+            
+            if (index < currentDepth) {
+                dot.classList.add('completed');
+            } else if (index === currentDepth) {
+                dot.classList.add('active');
+            }
+        });
     }
 
     showGraphVisualization() {
+        const container = document.getElementById('graphContainer');
+        container.classList.remove('loading');
         document.getElementById('graphLoader').classList.add('hidden');
+        document.getElementById('searchProgress').classList.add('hidden');
         document.getElementById('graph').classList.remove('hidden');
 
         // Small delay to ensure SVG is rendered
@@ -145,6 +278,20 @@ class PathFinderUI {
                 graph.simulation.alpha(0.3).restart();
             }
         }, 100);
+    }
+
+    hidePathDisplay() {
+        // Hide the path steps container and progress display
+        document.getElementById('pathStepsContainer').classList.add('hidden');
+        document.getElementById('searchProgress').classList.add('hidden');
+        
+        // Clear the graph visualization
+        if (graph && graph.svg) {
+            graph.svg.selectAll('*').remove();
+        }
+        // Return container to loading state while hidden
+        const container = document.getElementById('graphContainer');
+        container.classList.add('loading');
     }
 
     async findPath() {
@@ -156,9 +303,19 @@ class PathFinderUI {
             return;
         }
 
+        // If there's already a running task, this new request will replace it
+        if (currentTaskId) {
+            // Clear the previous task state
+            this.clearActiveTask();
+        }
+
         try {
             this.showLoading();
+            this.hidePathDisplay();
             this.showVisualizationSection();
+            
+            // Update search path header immediately with actual pages
+            document.getElementById('searchPath').textContent = `${startPage} → ${endPage}`;
 
             const response = await fetch(`${API_BASE}/getPath`, {
                 method: 'POST',
@@ -205,11 +362,20 @@ class PathFinderUI {
 
             switch (data.status) {
                 case 'PENDING':
-                    this.updateProgressStatus('Task queued, waiting to start...', 5);
+                    // Keep the progress loader visible while waiting for first callback
+                    this.showProgressLoader();
+                    // Show zeroed stats while we wait
+                    this.resetProgressUI();
+                    // Header already shows start→end; stats will populate on first update
                     setTimeout(() => this.pollTaskStatus(), 1000);
                     break;
 
                 case 'IN_PROGRESS':
+                    // Switch to progress display and update with real data
+                    this.showProgressLoader();
+                    if (data.progress) {
+                        this.updateProgressDisplay(data.progress);
+                    }
                     setTimeout(() => this.pollTaskStatus(), 1000);
                     break;
 
@@ -218,6 +384,7 @@ class PathFinderUI {
                     break;
 
                 case 'FAILURE':
+                    this.clearActiveTask();
                     this.hideLoading();
                     const section = document.getElementById('visualizationSection');
                     section.classList.remove('show');
@@ -226,11 +393,13 @@ class PathFinderUI {
                     break;
 
                 default:
+                    this.clearActiveTask();
                     this.showError(`Unknown task status: ${data.status}`);
                     StateManager.clear();
             }
 
         } catch (error) {
+            this.clearActiveTask();
             this.hideLoading();
             const section = document.getElementById('visualizationSection');
             section.classList.remove('show');
@@ -261,8 +430,9 @@ class PathFinderUI {
         this.visualizePath(result.path);
         this.displayPathList(result.path, result);
 
-        // Clear task ID since it's completed
+        // Clear task ID since it's completed and update button state
         currentTaskId = null;
+        this.updateButtonState();
     }
 
     // Re-render graph responsively based on saved, completed result
@@ -305,7 +475,7 @@ class PathFinderUI {
         // Get actual container dimensions
         const container = document.getElementById('graphContainer');
         const containerRect = container.getBoundingClientRect();
-        const width = containerRect.width - 48; // Account for padding
+        const width = containerRect.width - 64; // Account for 32px left + 32px right padding
         const nodeCount = nodes.length;
         const calculatedHeight = Math.max(400, Math.min(600, nodeCount * 60));
 
@@ -532,9 +702,14 @@ class PathFinderUI {
         const pathStepsContainer = document.getElementById('pathStepsContainer');
         const pathSteps = document.getElementById('pathSteps');
 
-        // Update stats
+        // Update stats - simple badges design
         document.getElementById('pathLength').textContent = `${path.length} steps`;
         document.getElementById('searchTime').textContent = `${result.search_time?.toFixed(2) || 'N/A'}s`;
+        
+        // Add nodes explored to the badges (singular/plural)
+        const nodesExplored = result.search_stats?.nodes_explored || result.nodes_explored || 0;
+        const nodeText = nodesExplored === 1 ? 'node' : 'nodes';
+        document.getElementById('nodesExploredStat').textContent = `${nodesExplored.toLocaleString()} ${nodeText}`;
 
         pathSteps.innerHTML = '';
 
@@ -562,19 +737,14 @@ class PathFinderUI {
     }
 
     clearVisualization() {
-        if (pollingInterval) {
-            clearInterval(pollingInterval);
-            pollingInterval = null;
-        }
-
-        currentTaskId = null;
+        // Clear active task if any
+        this.clearActiveTask();
 
         // Clear stored state
         StateManager.clear();
 
         document.getElementById('error').classList.add('hidden');
         document.getElementById('pathStepsContainer').classList.add('hidden');
-        document.getElementById('findPathBtn').disabled = false;
 
         // Hide visualization section
         const section = document.getElementById('visualizationSection');
@@ -583,6 +753,9 @@ class PathFinderUI {
 
         document.getElementById('startPage').value = '';
         document.getElementById('endPage').value = '';
+
+        // Update button state after clearing inputs
+        this.updateButtonState();
 
         if (graph && graph.svg) {
             graph.svg.selectAll('g').remove();
@@ -632,7 +805,7 @@ PathFinderUI.prototype.resizeGraph = function () {
     if (!container) return;
     const { width: containerWidth } = container.getBoundingClientRect();
 
-    const newWidth = containerWidth - 48; // padding
+    const newWidth = containerWidth - 64; // 32px left + 32px right padding
     const nodeCount = graph.simulation.nodes().length || 0;
     const newHeight = Math.max(400, Math.min(600, nodeCount * 60));
 
@@ -646,6 +819,7 @@ PathFinderUI.prototype.resizeGraph = function () {
         .attr('height', graph.height)
         .attr('viewBox', `0 0 ${graph.width} ${graph.height}`)
         .style('display', 'block');
+
 
     // Update forces to reflect new center and spacing
     const nodes = graph.simulation.nodes();
@@ -673,3 +847,10 @@ window.addEventListener('resize', debounce(() => {
         pathFinderUI.resizeGraph();
     }
 }, 120));
+
+// Helper function for opening Wikipedia pages
+function openWikipediaPage(pageName) {
+    if (pageName && pageName !== '-') {
+        window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(pageName)}`, '_blank');
+    }
+}

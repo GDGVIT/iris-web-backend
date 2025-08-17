@@ -66,7 +66,7 @@ class ServiceFactory:
         return cls._wikipedia_client
 
     @classmethod
-    def create_pathfinding_service(cls, algorithm: str = "bfs") -> PathFindingService:
+    def create_pathfinding_service(cls, algorithm: str = "bfs", progress_callback: callable = None) -> PathFindingService:
         """Create pathfinding service with specified algorithm."""
         wikipedia_client = cls.get_wikipedia_client()
         cache_service = cls.get_cache_service()
@@ -82,7 +82,12 @@ class ServiceFactory:
             )
         else:  # Default to regular BFS
             path_finder = RedisBasedBFSPathFinder(
-                wikipedia_client, cache_service, queue_service, max_depth, batch_size
+                wikipedia_client, 
+                cache_service, 
+                queue_service, 
+                max_depth, 
+                batch_size,
+                progress_callback
             )
 
         return PathFindingService(path_finder, cache_service, wikipedia_client)
@@ -125,9 +130,9 @@ class ServiceFactory:
         logger.info("Service factory cleaned up")
 
 
-def get_pathfinding_service(algorithm: str = "bfs") -> PathFindingService:
+def get_pathfinding_service(algorithm: str = "bfs", progress_callback: callable = None) -> PathFindingService:
     """Convenience function to get pathfinding service."""
-    return ServiceFactory.create_pathfinding_service(algorithm)
+    return ServiceFactory.create_pathfinding_service(algorithm, progress_callback)
 
 
 def get_explore_service() -> ExploreService:
