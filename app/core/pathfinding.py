@@ -29,12 +29,14 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         queue_service: QueueInterface,
         max_depth: int = 6,
         batch_size: int = 50,
+        progress_callback: Optional[callable] = None,
     ):
         self.wikipedia_client = wikipedia_client
         self.cache_service = cache_service
         self.queue_service = queue_service
         self.max_depth = max_depth
         self.batch_size = batch_size
+        self.progress_callback = progress_callback
 
     def find_shortest_path(self, start_page: str, end_page: str) -> Dict[str, Any]:
         """
@@ -105,6 +107,9 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
 
         # Simple BFS: process one item at a time from the queue
         nodes_explored = 0
+        import time
+
+        search_start_time = time.time()
 
         while self.queue_service.length(queue_key) > 0:
             current_item = self.queue_service.pop(queue_key)
@@ -118,6 +123,24 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             logger.info(
                 f"Processing page '{current_page}' at depth {current_depth} (node #{nodes_explored})"
             )
+
+            # Report progress every 3 nodes
+            if self.progress_callback and nodes_explored % 3 == 0:
+                queue_size = self.queue_service.length(queue_key)
+                elapsed_time = time.time() - search_start_time
+
+                self.progress_callback(
+                    {
+                        "status": "Searching...",
+                        "search_stats": {
+                            "nodes_explored": nodes_explored,
+                            "current_depth": current_depth,
+                            "last_node": current_page,
+                            "queue_size": queue_size,
+                        },
+                        "search_time_elapsed": round(elapsed_time, 2),
+                    }
+                )
 
             # Check depth limit
             if current_depth > self.max_depth:

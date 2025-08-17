@@ -1,42 +1,87 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wikipedia Path Finder</title>
+    <title>Iris: Wikipedia Path Finder</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon-dark.svg" id="favicon">
     <link rel="stylesheet" href="/static/styles.css">
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        // Dynamic favicon switching for Chrome compatibility
+        function updateFavicon() {
+            const favicon = document.getElementById('favicon');
+            const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            favicon.href = isDarkMode ? '/static/favicon-dark.svg' : '/static/favicon-light.svg';
+        }
+
+        // Update on load
+        document.addEventListener('DOMContentLoaded', updateFavicon);
+        
+        // Listen for theme changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateFavicon);
+    </script>
 </head>
+
 <body>
     <div class="container">
         <header>
-            <h1>Iris: Wikipedia Path Finder</h1>
+            <div class="header-logo-container">
+                <img src="/static/logo.svg" alt="Iris Logo" class="header-logo">
+                <h1 style="margin: 0;">Iris: Wikipedia Path Finder</h1>
+            </div>
             <p>Discover the shortest path between any two Wikipedia pages through connected links</p>
+            <div class="header-actions">
+                <button id="toggleAboutBtn" class="link-button" aria-controls="aboutBox" aria-expanded="false">About Iris</button>
+            </div>
         </header>
-        
+
+        <!-- About / How-To info box -->
+        <div id="aboutBox" class="info-box hidden" role="region" aria-label="About Iris and how to use it">
+            <div class="info-header">
+                <h3 class="info-title">What is Iris? How to use</h3>
+            </div>
+            <div class="info-content">
+                <p><strong>Iris</strong> discovers the shortest hyperlink path between two Wikipedia pages. Under the hood it runs a high‑performance graph search and streams live progress, then visualizes the path so you can explore how topics connect.</p>
+                <ul class="info-list">
+                    <li><strong>Pick pages:</strong> Enter two Wikipedia page titles (e.g., “Barack Obama” → “Mathematics”). Exact titles work best.</li>
+                    <li><strong>Start:</strong> Click <em>Find Path</em>. The progress card shows depth, nodes explored, queue size, and elapsed time.</li>
+                    <li><strong>Explore:</strong> Drag nodes to tidy the layout and click any step to open it on Wikipedia.</li>
+                    <li><strong>Resume:</strong> Your latest search is saved locally so you can refresh and continue later.</li>
+                </ul>
+                <p class="info-note">Tip: Some pairs can take longer or may not connect quickly. Try broader page titles if you get stuck.</p>
+                <div class="info-links">
+                    <a href="/api" target="_blank" rel="noopener">API docs</a>
+                    <span aria-hidden="true">•</span>
+                    <a href="https://www.mediawiki.org/wiki/API:Main_page" target="_blank" rel="noopener">Wikipedia API</a>
+                </div>
+            </div>
+        </div>
+
         <div class="input-section">
             <div class="form-row">
                 <div class="form-group">
                     <label for="startPage">Start Page</label>
                     <input type="text" id="startPage" placeholder="Barack Obama" />
                 </div>
-                
+
                 <div class="form-group">
                     <label for="endPage">End Page</label>
                     <input type="text" id="endPage" placeholder="Mathematics" />
                 </div>
             </div>
-            
+
             <div class="button-group">
                 <button id="findPathBtn" class="btn btn-primary" onclick="findPath()">Find Path</button>
                 <button id="clearBtn" class="btn btn-secondary" onclick="clearVisualization()">Clear</button>
             </div>
         </div>
-        
+
         <div id="error" class="error-message hidden">
             <p id="errorMessage"></p>
         </div>
-        
+
         <div class="visualization-section" id="visualizationSection">
             <div class="graph-container" id="graphContainer">
                 <div class="graph-loader" id="graphLoader">
@@ -47,22 +92,114 @@
                     </div>
                     <div>Building your path visualization...</div>
                 </div>
+                
+                <div class="search-progress hidden" id="searchProgress">
+                    <div class="search-progress-header">
+                        <span>Searching for path:</span>
+                        <span id="searchPath">Barack Obama → Mathematics</span>
+                    </div>
+                    
+                    <div class="activity-bar">
+                        <div class="activity-bar-fill"></div>
+                    </div>
+                    
+                    <div class="depth-indicator">
+                        <div class="depth-label">Depth:</div>
+                        <div class="depth-dots" id="depthDots">
+                            <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="search-stats">
+                        <div class="search-stat">
+                            <div class="stat-label">Nodes Explored</div>
+                            <div class="stat-value" id="nodesExplored">0</div>
+                        </div>
+                        <div class="search-stat">
+                            <div class="stat-label">Queue Size</div>
+                            <div class="stat-value" id="queueSize">1</div>
+                        </div>
+                        <div class="search-stat">
+                            <div class="stat-label">Elapsed Time</div>
+                            <div class="stat-value" id="elapsedTime">0s</div>
+                        </div>
+                        <div class="search-stat last-node">
+                            <div class="stat-label">Currently Exploring</div>
+                            <div class="stat-value" id="lastNode" onclick="openWikipediaPage(this.textContent)">-</div>
+                        </div>
+                    </div>
+                </div>
+                
                 <svg id="graph" class="hidden"></svg>
             </div>
-            
+
             <div id="pathStepsContainer" class="path-steps-container hidden">
                 <div class="path-header">
                     <h3>Path Found</h3>
                     <div class="path-stats">
                         <span id="pathLength" class="stat"></span>
                         <span id="searchTime" class="stat"></span>
+                        <span id="nodesExploredStat" class="stat"></span>
                     </div>
                 </div>
                 <div id="pathSteps" class="path-steps"></div>
             </div>
         </div>
     </div>
-    
+
     <script src="/static/script.js"></script>
+    <script>
+        // About box toggle with timed resurfacing and sticky open state
+        document.addEventListener('DOMContentLoaded', () => {
+            const RESURFACE_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+            const KEY_NEXT_SHOW_AT = 'iris_about_next_show_at';
+            const KEY_PINNED = 'iris_about_pinned';
+            try {
+                const box = document.getElementById('aboutBox');
+                const toggle = document.getElementById('toggleAboutBtn');
+                const now = Date.now();
+                const nextShowAt = parseInt(localStorage.getItem(KEY_NEXT_SHOW_AT) || '0', 10);
+                const pinned = localStorage.getItem(KEY_PINNED) === 'true';
+
+                const showBox = () => {
+                    if (box) box.classList.remove('hidden');
+                    if (toggle) toggle.setAttribute('aria-expanded', 'true');
+                    localStorage.setItem(KEY_PINNED, 'true');
+                };
+                const hideBox = () => {
+                    if (box) box.classList.add('hidden');
+                    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+                    localStorage.setItem(KEY_PINNED, 'false');
+                    localStorage.setItem(KEY_NEXT_SHOW_AT, String(Date.now() + RESURFACE_INTERVAL_MS));
+                };
+
+                if (pinned) {
+                    // Stay open across refreshes until user hides it
+                    showBox();
+                } else if (!nextShowAt || now >= nextShowAt) {
+                    showBox();
+                } else {
+                    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+                }
+
+                if (toggle) {
+                    toggle.addEventListener('click', () => {
+                        const isHidden = box.classList.contains('hidden');
+                        if (isHidden) {
+                            showBox();
+                        } else {
+                            hideBox();
+                        }
+                    });
+                }
+            } catch (e) { /* no-op */ }
+        });
+    </script>
 </body>
+
 </html>

@@ -264,9 +264,9 @@ class TestCacheAPI:
 class TestAPIInfo:
     """Integration tests for API information endpoints."""
 
-    def test_index_endpoint(self, client):
-        """Test API information endpoint."""
-        response = client.get("/")
+    def test_api_info_endpoint(self, client):
+        """Test API information endpoint returns JSON at /api."""
+        response = client.get("/api")
 
         assert response.status_code == 200
         data = json.loads(response.data)
@@ -275,10 +275,21 @@ class TestAPIInfo:
         assert "endpoints" in data
         assert "POST /getPath" in data["endpoints"]
 
-    def test_404_error_handler(self, client):
-        """Test 404 error handling."""
-        response = client.get("/nonexistent-endpoint")
+    def test_index_serves_html(self, client):
+        """Root index serves static HTML UI, not JSON."""
+        response = client.get("/")
 
+        assert response.status_code == 200
+        assert response.content_type.startswith("text/html")
+
+    def test_404_error_handler(self, client):
+        """Non-API paths redirect; API-like paths return JSON 404."""
+        # Non-API path should redirect to '/'
+        resp_redirect = client.get("/nonexistent-endpoint")
+        assert resp_redirect.status_code in (301, 302)
+
+        # API-like path should return structured JSON 404
+        response = client.get("/api/nonexistent")
         assert response.status_code == 404
         data = json.loads(response.data)
         assert data["error"] is True

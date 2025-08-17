@@ -76,8 +76,17 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
             },
         )
 
-        # Get pathfinding service
-        pathfinding_service = get_pathfinding_service(algorithm)
+        # Create progress callback for real-time updates
+        def progress_update(progress_data):
+            # Add start/end pages to progress data
+            progress_data["search_stats"]["start_page"] = start_page
+            progress_data["search_stats"]["end_page"] = end_page
+            progress_data["search_stats"]["max_depth"] = 6  # From config
+
+            self.update_state(state="PROGRESS", meta=progress_data)
+
+        # Get pathfinding service with progress callback
+        pathfinding_service = get_pathfinding_service(algorithm, progress_update)
 
         # Validate that pages exist
         start_exists, end_exists = pathfinding_service.validate_pages(
@@ -100,34 +109,28 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
                 "code": "PAGE_NOT_FOUND",
             }
 
-        # Update progress
+        # Update progress - starting search
         self.update_state(
             state="PROGRESS",
             meta={
-                "current": 25,
-                "total": 100,
                 "status": "Starting pathfinding search...",
-                "start_page": start_page,
-                "end_page": end_page,
+                "search_stats": {
+                    "nodes_explored": 0,
+                    "current_depth": 0,
+                    "last_node": start_page,
+                    "queue_size": 1,
+                    "start_page": start_page,
+                    "end_page": end_page,
+                    "max_depth": 6,
+                },
+                "search_time_elapsed": 0,
             },
         )
 
-        # Perform pathfinding
+        # Perform pathfinding (will report real-time progress via callback)
         result = pathfinding_service.find_path(search_request)
 
-        # Update progress
-        self.update_state(
-            state="PROGRESS",
-            meta={
-                "current": 90,
-                "total": 100,
-                "status": "Finalizing results...",
-                "path_length": result.length,
-                "search_time": result.search_time,
-            },
-        )
-
-        # Return successful result
+        # Return successful result with detailed search stats
         success_result = {
             "status": "SUCCESS",
             "path": result.path,
@@ -137,6 +140,14 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
             "search_time": result.search_time,
             "nodes_explored": result.nodes_explored,
             "algorithm": algorithm,
+            "search_stats": {
+                "nodes_explored": result.nodes_explored,
+                "final_depth": result.length - 1 if result.path else 0,
+                "start_page": result.start_page,
+                "end_page": result.end_page,
+                "max_depth": 6,  # From config
+                "search_completed": True,
+            },
         }
 
         logger.info(

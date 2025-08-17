@@ -1,4 +1,12 @@
-from flask import Blueprint, request, jsonify, send_from_directory, current_app
+from flask import (
+    Blueprint,
+    request,
+    jsonify,
+    send_from_directory,
+    current_app,
+    redirect,
+    url_for,
+)
 from app.api.middleware import api_endpoint
 from app.api.schemas import (
     SearchRequestSchema,
@@ -80,6 +88,7 @@ def get_task_status_route(task_id):
                     "length": result.get("length", 0),
                     "search_time": result.get("search_time"),
                     "nodes_explored": result.get("nodes_explored"),
+                    "search_stats": result.get("search_stats"),
                 },
             }
         else:
@@ -217,11 +226,11 @@ def clear_cache():
         raise
 
 
-@main.route("/ui")
+@main.route("/")
 @api_endpoint(require_json_content=False, log_request=False)
-def ui():
+def index():
     """
-    Serve the path visualization UI.
+    Serve the path visualization UI (main landing page).
     """
     try:
         import os
@@ -233,6 +242,14 @@ def ui():
     except Exception as e:
         logger.error(f"Failed to serve UI: {e}")
         return jsonify({"error": "UI not available"}), 404
+
+
+@main.route("/ui")
+def ui_redirect():
+    """
+    Redirect /ui to main page for backward compatibility.
+    """
+    return redirect(url_for("main.index"))
 
 
 @main.route("/static/<path:filename>")
@@ -253,9 +270,9 @@ def static_files(filename):
         return jsonify({"error": "File not found"}), 404
 
 
-@main.route("/", methods=["GET"])
+@main.route("/api", methods=["GET"])
 @api_endpoint(require_json_content=False, log_request=False)
-def index():
+def api_info():
     """
     API information endpoint.
     """
@@ -268,19 +285,43 @@ def index():
             "GET /tasks/status/<task_id>": "Check task status",
             "POST /explore": "Explore page connections",
             "GET /health": "Health check",
-            "GET /ui": "Path visualization UI",
-            "GET /": "API information",
+            "GET /": "Path visualization UI",
+            "GET /api": "API information",
         },
         "documentation": "./API_DOCUMENTATION.md",
-        "ui_url": "/ui",
+        "ui_url": "/",
     }
     return jsonify(response_data)
+
+
+# Catch-all route for non-API paths
+@main.route("/<path:path>")
+def catch_all(path):
+    """
+    Redirect all non-API paths to main UI.
+    Only redirect if it's not an API endpoint or static file.
+    """
+    # List of API endpoints that should return JSON errors instead of redirecting
+    api_paths = ["getPath", "tasks", "explore", "health", "cache", "api"]
+
+    # Check if this is an API call
+    if any(path.startswith(api_path) for api_path in api_paths):
+        response_data = {
+            "error": True,
+            "message": "Endpoint not found",
+            "code": "NOT_FOUND",
+        }
+        return jsonify(response_data), 404
+
+    # For all other paths, redirect to main UI
+    return redirect(url_for("main.index"))
 
 
 # Error handlers for the blueprint
 @main.errorhandler(404)
 def not_found(error):
     """Handle 404 errors."""
+    # This will only catch 404s that aren't handled by catch_all
     response_data = {
         "error": True,
         "message": "Endpoint not found",

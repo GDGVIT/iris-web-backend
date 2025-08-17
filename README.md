@@ -39,10 +39,11 @@ The project demonstrates expertise in:
 - **CORS Support**: Cross-origin resource sharing for frontend integration
 
 ### ✅ Interactive Visualization
-- **Web-Based UI**: Modern dark-themed interface for interactive pathfinding
-- **Real-Time Graph Visualization**: D3.js-powered interactive graph with physics simulation
+- **Web-Based UI**: Interactive interface for pathfinding with real-time progress
+- **Graph Visualization**: D3.js-powered interactive graph with physics simulation
+- **Mobile Support**: Touch-optimized interface that works on mobile devices
+- **State Persistence**: Saves progress and resumes interrupted searches
 - **Dynamic Features**: Drag-and-drop nodes, responsive layout, smart text truncation
-- **Professional Design**: Clean typography with JetBrains Mono, opaque text backgrounds
 
 ### ✅ Development Tools
 - **Comprehensive Testing**: Unit and integration tests with 100% pass rate
@@ -68,7 +69,7 @@ The project demonstrates expertise in:
 
 [![pytest](https://img.shields.io/badge/pytest-8.3.3-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white)](https://pytest.org)
 [![Black](https://img.shields.io/badge/Code%20Style-Black-000000?style=for-the-badge&logo=python&logoColor=white)](https://github.com/psf/black)
-[![Coverage](https://img.shields.io/badge/Coverage-81%20Tests%20Passing-success?style=for-the-badge&logo=pytest)](./tests/)
+[![Coverage](https://img.shields.io/badge/Coverage-107%20Tests%20Passing%20(~80%25)-success?style=for-the-badge&logo=pytest)](./tests/)
 [![Marshmallow](https://img.shields.io/badge/Validation-Marshmallow-FF6B6B?style=for-the-badge&logo=python)](https://marshmallow.readthedocs.io/)
 
 ## Project Information
@@ -102,8 +103,8 @@ pip install -r requirements.txt
 ```
 
 The application will be available at:
-- **API**: `http://localhost:9020`
-- **Interactive UI**: `http://localhost:9020/ui`
+- **Interactive UI**: `http://localhost:9020` (default landing page)
+- **API Documentation**: `http://localhost:9020/api`
 
 ### Production Deployment
 ```bash
@@ -121,11 +122,13 @@ export REDIS_URL=redis://localhost:6379/0
 Complete API documentation with examples, request/response schemas, and integration guides is available in [API_DOCUMENTATION.md](./API_DOCUMENTATION.md).
 
 ### Key Endpoints
+- `GET /` - Interactive UI (default landing page)
+- `GET /<any-path>` - All non-API paths redirect to main UI
 - `POST /getPath` - Start pathfinding task (returns task ID for polling)
-- `GET /tasks/status/<task_id>` - Poll task status and retrieve results
+- `GET /tasks/status/<task_id>` - Poll task status with progress updates
 - `POST /explore` - Discover page connections for graph visualization
 - `GET /health` - System health monitoring endpoint
-- `GET /ui` - Interactive web interface for pathfinding visualization
+- `GET /api` - API documentation and information
 
 ## Architecture Highlights
 
@@ -146,17 +149,24 @@ The core pathfinding algorithm demonstrates advanced system design:
 
 ```bash
 # Run comprehensive test suite
-pytest tests/ -v
+pytest -v
 
-# Run with coverage reporting
-pytest tests/ --cov=app --cov-report=html
+# Run with coverage reporting (console + HTML)
+pytest --cov=app --cov-report=term-missing --cov-report=html
 
 # Test specific components
 pytest tests/unit/ -v      # Unit tests
 pytest tests/integration/ -v  # Integration tests
 ```
 
-Current test coverage: **81 tests passing** with comprehensive unit and integration coverage.
+Current test coverage: **107 tests passing** with approximately **80% line coverage** across the `app/` package (see `htmlcov/index.html` after running coverage for a browsable report).
+
+Key areas covered by new tests:
+- Cache and queue infrastructure with Redis client mocking
+- ServiceFactory lifecycle and Celery task configuration helpers
+- Wikipedia client parsing, batching, and request handling with a fake session
+- API middleware decorators (error handling, CORS, rate limiting, size checks)
+- Logging configuration, including file handler setup for non-testing environments
 
 ## Contributors
 
