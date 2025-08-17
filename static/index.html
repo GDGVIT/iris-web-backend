@@ -4,15 +4,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wikipedia Path Finder</title>
+    <title>Iris: Wikipedia Path Finder</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon-dark.svg" id="favicon">
     <link rel="stylesheet" href="/static/styles.css">
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        // Dynamic favicon switching for Chrome compatibility
+        function updateFavicon() {
+            const favicon = document.getElementById('favicon');
+            const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            favicon.href = isDarkMode ? '/static/favicon-dark.svg' : '/static/favicon-light.svg';
+        }
+
+        // Update on load
+        document.addEventListener('DOMContentLoaded', updateFavicon);
+        
+        // Listen for theme changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateFavicon);
+    </script>
 </head>
 
 <body>
     <div class="container">
         <header>
-            <h1>Iris: Wikipedia Path Finder</h1>
+            <div class="header-logo-container">
+                <img src="/static/logo.svg" alt="Iris Logo" class="header-logo">
+                <h1 style="margin: 0;">Iris: Wikipedia Path Finder</h1>
+            </div>
             <p>Discover the shortest path between any two Wikipedia pages through connected links</p>
         </header>
 

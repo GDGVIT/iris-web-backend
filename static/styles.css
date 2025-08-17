@@ -83,6 +83,20 @@ header h1 {
     letter-spacing: -0.02em;
 }
 
+.header-logo-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.header-logo {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+}
+
 header p {
     font-size: 18px;
     color: var(--text-secondary);
@@ -585,6 +599,16 @@ header p {
         font-size: 32px;
     }
 
+    .header-logo-container {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .header-logo {
+        width: 40px;
+        height: 40px;
+    }
+
     .form-row {
         grid-template-columns: 1fr;
         gap: 16px;
@@ -612,6 +636,11 @@ header p {
 
     header h1 {
         font-size: 28px;
+    }
+
+    .header-logo {
+        width: 36px;
+        height: 36px;
     }
 
     .input-section,
