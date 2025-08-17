@@ -4,17 +4,34 @@ let currentTaskId = null;
 let pollingInterval = null;
 let graph = null;
 
+// State management
+const StateManager = {
+    save(data) {
+        localStorage.setItem('iris_state', JSON.stringify(data));
+    },
+
+    load() {
+        const stored = localStorage.getItem('iris_state');
+        return stored ? JSON.parse(stored) : null;
+    },
+
+    clear() {
+        localStorage.removeItem('iris_state');
+    }
+};
+
 class PathFinderUI {
     constructor() {
         this.initializeGraph();
         this.setupEventListeners();
+        this.restoreStateFromStorage();
     }
 
     initializeGraph() {
         const svg = d3.select('#graph');
-        
+
         svg.selectAll('*').remove();
-        
+
         this.tooltip = d3.select('body').append('div')
             .attr('class', 'tooltip');
 
@@ -32,10 +49,49 @@ class PathFinderUI {
         document.getElementById('startPage').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.findPath();
         });
-        
+
         document.getElementById('endPage').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.findPath();
         });
+
+        // Auto-save state on input changes
+        document.getElementById('startPage').addEventListener('input', () => this.saveCurrentState());
+        document.getElementById('endPage').addEventListener('input', () => this.saveCurrentState());
+    }
+
+    restoreStateFromStorage() {
+        const savedState = StateManager.load();
+        if (savedState) {
+            if (savedState.startPage) {
+                document.getElementById('startPage').value = savedState.startPage;
+            }
+            if (savedState.endPage) {
+                document.getElementById('endPage').value = savedState.endPage;
+            }
+
+            // If there's an active task, try to restore it
+            if (savedState.taskId && savedState.status === 'IN_PROGRESS') {
+                currentTaskId = savedState.taskId;
+                this.showVisualizationSection();
+                this.showProgressLoader();
+                this.pollTaskStatus();
+            } else if (savedState.result && savedState.result.path) {
+                // Restore completed result
+                this.showVisualizationSection();
+                this.handlePathFound(savedState.result);
+            }
+        }
+    }
+
+    saveCurrentState() {
+        const state = {
+            startPage: document.getElementById('startPage').value,
+            endPage: document.getElementById('endPage').value,
+            taskId: currentTaskId,
+            status: currentTaskId ? 'IN_PROGRESS' : 'IDLE',
+            timestamp: Date.now()
+        };
+        StateManager.save(state);
     }
 
     showLoading() {
@@ -62,12 +118,23 @@ class PathFinderUI {
     showGraphLoader() {
         document.getElementById('graphLoader').classList.remove('hidden');
         document.getElementById('graph').classList.add('hidden');
+        this.updateProgressStatus('Preparing search...');
+    }
+
+    showProgressLoader() {
+        document.getElementById('graphLoader').classList.remove('hidden');
+        document.getElementById('graph').classList.add('hidden');
+        this.updateProgressStatus('Resuming search...');
+    }
+
+    updateProgressStatus(status, progress = null) {
+        // Simple loader - no progress tracking needed
     }
 
     showGraphVisualization() {
         document.getElementById('graphLoader').classList.add('hidden');
         document.getElementById('graph').classList.remove('hidden');
-        
+
         // Small delay to ensure SVG is rendered
         setTimeout(() => {
             if (graph.simulation) {
@@ -88,7 +155,7 @@ class PathFinderUI {
         try {
             this.showLoading();
             this.showVisualizationSection();
-            
+
             const response = await fetch(`${API_BASE}/getPath`, {
                 method: 'POST',
                 headers: {
@@ -107,7 +174,10 @@ class PathFinderUI {
 
             const data = await response.json();
             currentTaskId = data.task_id;
-            
+
+            // Save task ID to state for recovery
+            this.saveCurrentState();
+
             this.pollTaskStatus();
 
         } catch (error) {
@@ -122,32 +192,38 @@ class PathFinderUI {
 
         try {
             const response = await fetch(`${API_BASE}/tasks/status/${currentTaskId}`);
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
-            
+
             switch (data.status) {
                 case 'PENDING':
+                    this.updateProgressStatus('Task queued, waiting to start...', 5);
+                    setTimeout(() => this.pollTaskStatus(), 1000);
+                    break;
+
                 case 'IN_PROGRESS':
                     setTimeout(() => this.pollTaskStatus(), 1000);
                     break;
-                    
+
                 case 'SUCCESS':
                     this.handlePathFound(data.result);
                     break;
-                    
+
                 case 'FAILURE':
                     this.hideLoading();
                     const section = document.getElementById('visualizationSection');
                     section.classList.remove('show');
                     this.showError(data.error || 'Task failed');
+                    StateManager.clear();
                     break;
-                    
+
                 default:
                     this.showError(`Unknown task status: ${data.status}`);
+                    StateManager.clear();
             }
 
         } catch (error) {
@@ -155,23 +231,34 @@ class PathFinderUI {
             const section = document.getElementById('visualizationSection');
             section.classList.remove('show');
             this.showError(`Failed to check task status: ${error.message}`);
+            StateManager.clear();
         }
     }
 
     handlePathFound(result) {
         this.hideLoading();
-        
+
         if (!result.path || result.path.length === 0) {
             // Hide the visualization section and show error
             const section = document.getElementById('visualizationSection');
             section.classList.remove('show');
             this.showError('No path found between the pages');
+            StateManager.clear();
             return;
         }
+
+        // Save successful result to state
+        const state = StateManager.load() || {};
+        state.result = result;
+        state.status = 'COMPLETED';
+        StateManager.save(state);
 
         this.showGraphVisualization();
         this.visualizePath(result.path);
         this.displayPathList(result.path, result);
+
+        // Clear task ID since it's completed
+        currentTaskId = null;
     }
 
     visualizePath(path) {
@@ -198,7 +285,7 @@ class PathFinderUI {
 
     renderGraph(nodes, links) {
         const { svg } = graph;
-        
+
         svg.selectAll('*').remove();
 
         // Get actual container dimensions
@@ -207,18 +294,18 @@ class PathFinderUI {
         const width = containerRect.width - 48; // Account for padding
         const nodeCount = nodes.length;
         const calculatedHeight = Math.max(400, Math.min(600, nodeCount * 60));
-        
+
         // Update graph object
         graph.width = width;
         graph.height = calculatedHeight;
-        
+
         // Set SVG dimensions properly  
         svg
             .attr('width', width)
             .attr('height', calculatedHeight)
             .attr('viewBox', `0 0 ${width} ${calculatedHeight}`)
             .style('display', 'block');
-        
+
         // Add arrow marker for directed edges
         const defs = svg.append('defs');
         defs.append('marker')
@@ -232,10 +319,10 @@ class PathFinderUI {
             .append('path')
             .attr('d', 'M0,-5L10,0L0,5')
             .attr('fill', '#58A6FF');
-        
+
         // Create main group
         const g = svg.append('g');
-        
+
         // Create links as paths for better arrow control
         const link = g.append('g')
             .attr('class', 'links')
@@ -278,17 +365,31 @@ class PathFinderUI {
                 simulation.alphaTarget(0.1).restart();
             })
             .call(d3.drag()
+                .filter(event => {
+                    // Only allow drag on desktop or explicit drag events
+                    return !event.touches || event.touches.length === 1;
+                })
                 .on('start', (event, d) => {
+                    // Prevent scroll interference on mobile
+                    if (event.sourceEvent) {
+                        if (event.sourceEvent.type === 'touchstart') {
+                            event.sourceEvent.preventDefault();
+                            event.sourceEvent.stopPropagation();
+                        }
+                    }
                     if (!event.active) simulation.alphaTarget(0.05).restart();
                     d.fx = d.x;
                     d.fy = d.y;
                 })
                 .on('drag', (event, d) => {
                     const padding = 30;
+                    // Prevent default touch behaviors during drag
+                    if (event.sourceEvent) {
+                        event.sourceEvent.preventDefault();
+                    }
                     // Constrain drag within bounds
                     d.fx = Math.max(padding, Math.min(width - padding, event.x));
                     d.fy = Math.max(padding, Math.min(calculatedHeight - padding, event.y));
-                    // Gentle update without forcing aggressive movement
                 })
                 .on('end', (event, d) => {
                     if (!event.active) simulation.alphaTarget(0);
@@ -322,7 +423,7 @@ class PathFinderUI {
         // Calculate dynamic link distance based on text lengths
         const maxTextWidth = Math.max(...nodes.map(d => d.textWidth));
         const dynamicDistance = Math.max(80, maxTextWidth + 30);
-        
+
         // Very tight physics simulation with text-aware spacing
         const simulation = d3.forceSimulation(nodes)
             .force('link', d3.forceLink(links).id(d => d.id)
@@ -348,7 +449,7 @@ class PathFinderUI {
         // Update positions on each tick with proper edge constraints
         simulation.on('tick', () => {
             const padding = 30;
-            
+
             // Constrain node positions and update coordinates
             nodes.forEach(d => {
                 d.x = Math.max(padding, Math.min(width - padding, d.x));
@@ -356,7 +457,7 @@ class PathFinderUI {
                 // Update truncated text based on current spacing
                 d.displayText = getTruncatedText(d.name, dynamicDistance);
             });
-            
+
             link
                 .attr('d', d => {
                     const midX = (d.source.x + d.target.x) / 2;
@@ -375,7 +476,7 @@ class PathFinderUI {
                 .text(d => d.displayText);
 
             // Update label backgrounds with generous padding
-            labelBg.each(function(d) {
+            labelBg.each(function (d) {
                 const textLength = d.displayText.length * 7;
                 const horizontalPadding = 16;
                 const verticalPadding = 6;
@@ -388,10 +489,10 @@ class PathFinderUI {
                     .attr('height', boxHeight);
             });
         });
-        
+
         // Start with lower alpha for smoother initial animation
         simulation.alpha(0.5).restart();
-        
+
         // Let simulation settle naturally
         setTimeout(() => {
             simulation.alphaTarget(0);
@@ -403,33 +504,33 @@ class PathFinderUI {
     displayPathList(path, result) {
         const pathStepsContainer = document.getElementById('pathStepsContainer');
         const pathSteps = document.getElementById('pathSteps');
-        
+
         // Update stats
         document.getElementById('pathLength').textContent = `${path.length} steps`;
         document.getElementById('searchTime').textContent = `${result.search_time?.toFixed(2) || 'N/A'}s`;
-        
+
         pathSteps.innerHTML = '';
-        
+
         path.forEach((page, index) => {
             const stepDiv = document.createElement('div');
             stepDiv.className = 'path-step';
             stepDiv.onclick = () => {
                 window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(page)}`, '_blank');
             };
-            
+
             const stepNumber = document.createElement('div');
             stepNumber.className = 'step-number';
             stepNumber.textContent = index + 1;
-            
+
             const stepTitle = document.createElement('div');
             stepTitle.className = 'step-title';
             stepTitle.textContent = page;
-            
+
             stepDiv.appendChild(stepNumber);
             stepDiv.appendChild(stepTitle);
             pathSteps.appendChild(stepDiv);
         });
-        
+
         pathStepsContainer.classList.remove('hidden');
     }
 
@@ -438,21 +539,24 @@ class PathFinderUI {
             clearInterval(pollingInterval);
             pollingInterval = null;
         }
-        
+
         currentTaskId = null;
-        
+
+        // Clear stored state
+        StateManager.clear();
+
         document.getElementById('error').classList.add('hidden');
         document.getElementById('pathStepsContainer').classList.add('hidden');
         document.getElementById('findPathBtn').disabled = false;
-        
+
         // Hide visualization section
         const section = document.getElementById('visualizationSection');
         section.classList.remove('show');
         this.showGraphLoader();
-        
+
         document.getElementById('startPage').value = '';
         document.getElementById('endPage').value = '';
-        
+
         if (graph && graph.svg) {
             graph.svg.selectAll('g').remove();
             // Reset any fixed positions

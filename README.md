@@ -39,10 +39,11 @@ The project demonstrates expertise in:
 - **CORS Support**: Cross-origin resource sharing for frontend integration
 
 ### ✅ Interactive Visualization
-- **Web-Based UI**: Modern dark-themed interface for interactive pathfinding
-- **Real-Time Graph Visualization**: D3.js-powered interactive graph with physics simulation
+- **Web-Based UI**: Interactive interface for pathfinding with real-time progress
+- **Graph Visualization**: D3.js-powered interactive graph with physics simulation
+- **Mobile Support**: Touch-optimized interface that works on mobile devices
+- **State Persistence**: Saves progress and resumes interrupted searches
 - **Dynamic Features**: Drag-and-drop nodes, responsive layout, smart text truncation
-- **Professional Design**: Clean typography with JetBrains Mono, opaque text backgrounds
 
 ### ✅ Development Tools
 - **Comprehensive Testing**: Unit and integration tests with 100% pass rate
@@ -102,8 +103,8 @@ pip install -r requirements.txt
 ```
 
 The application will be available at:
-- **API**: `http://localhost:9020`
-- **Interactive UI**: `http://localhost:9020/ui`
+- **Interactive UI**: `http://localhost:9020` (default landing page)
+- **API Documentation**: `http://localhost:9020/api`
 
 ### Production Deployment
 ```bash
@@ -121,11 +122,13 @@ export REDIS_URL=redis://localhost:6379/0
 Complete API documentation with examples, request/response schemas, and integration guides is available in [API_DOCUMENTATION.md](./API_DOCUMENTATION.md).
 
 ### Key Endpoints
+- `GET /` - Interactive UI (default landing page)
+- `GET /<any-path>` - All non-API paths redirect to main UI
 - `POST /getPath` - Start pathfinding task (returns task ID for polling)
-- `GET /tasks/status/<task_id>` - Poll task status and retrieve results
+- `GET /tasks/status/<task_id>` - Poll task status with progress updates
 - `POST /explore` - Discover page connections for graph visualization
 - `GET /health` - System health monitoring endpoint
-- `GET /ui` - Interactive web interface for pathfinding visualization
+- `GET /api` - API documentation and information
 
 ## Architecture Highlights
 

@@ -7,8 +7,9 @@ The Iris Wikipedia Pathfinder API finds the shortest path between two Wikipedia 
 ## Base URL
 
 ```
-API: http://localhost:9020
-Web UI: http://localhost:9020/ui
+Application: http://localhost:9020
+Interactive UI: http://localhost:9020 (default landing page)
+API Documentation: http://localhost:9020/api
 ```
 
 ## Quick Start
@@ -96,9 +97,19 @@ honcho start
 
 ## API Endpoints
 
-### 1. Root Endpoint - API Information
+### 1. Interactive UI (Landing Page)
 
 **GET /**
+
+Serves the interactive web interface for pathfinding visualization (default landing page).
+
+**GET /any-path**
+
+All non-API paths automatically redirect to the main UI for a seamless user experience.
+
+### 2. API Information
+
+**GET /api**
 
 Returns basic API information and available endpoints.
 
@@ -113,14 +124,15 @@ Returns basic API information and available endpoints.
     "GET /tasks/status/<task_id>": "Check task status",
     "POST /explore": "Explore page connections",
     "GET /health": "Health check",
-    "GET /ui": "Interactive web interface",
-    "GET /": "API information"
+    "GET /": "Interactive web interface",
+    "GET /api": "API information"
   },
-  "documentation": "./API_DOCUMENTATION.md"
+  "documentation": "./API_DOCUMENTATION.md",
+  "ui_url": "/"
 }
 ```
 
-### 2. Find Path Between Pages
+### 3. Find Path Between Pages
 
 **POST /getPath**
 
@@ -164,7 +176,7 @@ curl -X POST http://localhost:9020/getPath \
   }'
 ```
 
-### 3. Check Task Status
+### 4. Check Task Status
 
 **GET /tasks/status/{task_id}**
 
@@ -188,12 +200,29 @@ Polls the status of a pathfinding task.
   "status": "IN_PROGRESS",
   "task_id": "abc123-def456-ghi789", 
   "progress": {
-    "current_depth": 3,
-    "nodes_explored": 150,
-    "message": "Searching at depth 3..."
+    "current": 25,
+    "total": 100,
+    "status": "Starting pathfinding search...",
+    "start_page": "Albert Einstein",
+    "end_page": "Physics"
   }
 }
 ```
+
+**Progress Status Messages:**
+- `current`: 0 - "Initializing pathfinding..."
+- `current`: 10 - "Validating pages..."
+- `current`: 25 - "Starting pathfinding search..."
+- `current`: 90 - "Finalizing results..." (includes `path_length` and `search_time`)
+
+**Progress Fields:**
+- `current` (integer): Current progress step (0-100)
+- `total` (integer): Total steps (always 100)
+- `status` (string): Human-readable status message
+- `start_page` (string): Starting Wikipedia page title
+- `end_page` (string): Target Wikipedia page title
+- `path_length` (integer, optional): Length of found path (when finalizing)
+- `search_time` (float, optional): Search time in seconds (when finalizing)
 
 **Response - Task Success:**
 ```json
@@ -218,12 +247,27 @@ Polls the status of a pathfinding task.
 }
 ```
 
+**Response - Task Retrying:**
+```json
+{
+  "status": "RETRY",
+  "task_id": "abc123-def456-ghi789",
+  "info": {
+    "error": "Connection timeout to Wikipedia API",
+    "retry_count": 2,
+    "max_retries": 3,
+    "next_retry_in": 60,
+    "status": "Retrying due to: Connection timeout to Wikipedia API"
+  }
+}
+```
+
 **Example cURL:**
 ```bash
 curl http://localhost:9020/tasks/status/abc123-def456-ghi789
 ```
 
-### 4. Explore Page Connections
+### 5. Explore Page Connections
 
 **POST /explore**
 
@@ -272,7 +316,7 @@ curl -X POST http://localhost:9020/explore \
   }'
 ```
 
-### 5. Health Check
+### 6. Health Check
 
 **GET /health**
 
@@ -283,7 +327,7 @@ Checks the health status of all system components.
 {
   "status": "healthy",
   "redis_status": "healthy",
-  "cache_status": "healthy", 
+  "cache_status": "healthy",
   "wikipedia_api_status": "healthy",
   "timestamp": "2025-01-31T00:00:00Z"
 }
@@ -295,7 +339,7 @@ Checks the health status of all system components.
   "status": "degraded",
   "redis_status": "unhealthy: Connection refused",
   "cache_status": "healthy",
-  "wikipedia_api_status": "healthy", 
+  "wikipedia_api_status": "healthy",
   "timestamp": "2025-01-31T00:00:00Z"
 }
 ```
@@ -305,7 +349,7 @@ Checks the health status of all system components.
 curl http://localhost:9020/health
 ```
 
-### 6. Clear Cache (Admin)
+### 7. Clear Cache (Admin)
 
 **POST /cache/clear**
 
@@ -337,24 +381,27 @@ curl -X POST http://localhost:9020/cache/clear \
   -d '{"pattern": "wiki_links:*"}'
 ```
 
-### 7. Interactive Web Interface
+### 8. Interactive Web Interface Features
 
-**GET /ui**
+The main landing page (`/`) serves the interactive web interface with enhanced features:
 
-Serves the interactive web interface for visualizing Wikipedia pathfinding results.
-
-**Features:**
+**Enhanced Features:**
+- **UI-First Experience**: Landing page serves interactive UI directly, all paths redirect to main interface
+- **State Persistence**: Automatically saves and restores search state using localStorage
+- **Mobile-Optimized**: Fixed touch/scroll conflicts for seamless mobile graph interaction
+- **Session Recovery**: Automatically resumes interrupted searches after page refresh
 - **Modern Dark Theme**: Professional dark tech aesthetic with GitHub-inspired colors
 - **Interactive Graph Visualization**: D3.js-powered force-directed graph with physics simulation
-- **Real-Time Pathfinding**: Live progress tracking and result visualization
 - **Dynamic Node Interaction**: Drag-and-drop nodes with intelligent physics
 - **Smart Text Rendering**: Dynamic text truncation based on graph density
 - **Professional Typography**: JetBrains Mono font throughout
-- **Responsive Design**: Works on desktop and mobile devices
+- **Responsive Design**: Works perfectly on desktop and mobile devices
 
 **Navigation:**
 ```
-http://localhost:9020/ui
+http://localhost:9020/       (default landing page)
+http://localhost:9020/ui     (redirects to main UI)
+http://localhost:9020/<any>  (redirects to main UI)
 ```
 
 **Interface Components:**
@@ -369,12 +416,13 @@ http://localhost:9020/ui
 - **Error Handling**: User-friendly error messages and loading states
 
 **Usage:**
-1. Navigate to `/ui` in your browser
-2. Enter Wikipedia page titles in start and end fields
+1. Navigate to `/` in your browser (or any non-API path)
+2. Enter Wikipedia page titles in start and end fields  
 3. Click "Find Path" to initiate pathfinding
-4. Watch real-time graph visualization
-5. Interact with nodes by dragging them
+4. View graph visualization as path is discovered
+5. Interact with nodes by dragging them (mobile-optimized)
 6. Click on path steps to visit Wikipedia pages
+7. State is automatically saved - refresh to resume interrupted searches
 
 **Technical Details:**
 - Uses D3.js v7 for graph visualization
@@ -461,9 +509,11 @@ curl http://localhost:9020/tasks/status/xyz789-abc123-def456
   "status": "IN_PROGRESS",
   "task_id": "xyz789-abc123-def456",
   "progress": {
-    "current_depth": 2,
-    "nodes_explored": 95,
-    "message": "Searching at depth 2..."
+    "current": 10,
+    "total": 100,
+    "status": "Validating pages...",
+    "start_page": "Barack Obama",
+    "end_page": "Computer Science"
   }
 }
 ```
