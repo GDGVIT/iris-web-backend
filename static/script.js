@@ -32,8 +32,12 @@ class PathFinderUI {
 
         svg.selectAll('*').remove();
 
-        this.tooltip = d3.select('body').append('div')
-            .attr('class', 'tooltip');
+        // Reuse existing tooltip if present to avoid duplicates
+        this.tooltip = d3.select('.tooltip');
+        if (this.tooltip.empty()) {
+            this.tooltip = d3.select('body').append('div')
+                .attr('class', 'tooltip');
+        }
 
         graph = {
             svg: svg,
@@ -261,6 +265,16 @@ class PathFinderUI {
         currentTaskId = null;
     }
 
+    // Re-render graph responsively based on saved, completed result
+    rerenderFromState() {
+        const savedState = StateManager.load();
+        if (savedState && savedState.status === 'COMPLETED' && savedState.result && savedState.result.path) {
+            this.initializeGraph();
+            this.visualizePath(savedState.result.path);
+            this.showGraphVisualization();
+        }
+    }
+
     visualizePath(path) {
         const nodes = path.map((page, index) => ({
             id: page,
@@ -333,6 +347,7 @@ class PathFinderUI {
             .attr('marker-mid', 'url(#arrowhead)');
 
         // Create nodes
+        let isDragging = false;
         const node = g.append('g')
             .attr('class', 'nodes')
             .selectAll('circle')
@@ -345,38 +360,44 @@ class PathFinderUI {
                 return classes;
             })
             .attr('r', 14)
+            // Ensure touch devices dedicate gestures to drag
+            .style('touch-action', 'none')
             .on('mouseover', (event, d) => {
+                // Avoid tooltip on touch to prevent interference
+                const isTouch = event?.pointerType === 'touch' || event?.type?.startsWith('touch');
+                if (isTouch) return;
                 this.tooltip
                     .style('opacity', 1)
                     .html(`${d.name}<br/>Step ${d.index + 1}`)
                     .style('left', (event.pageX + 10) + 'px')
                     .style('top', (event.pageY - 10) + 'px');
             })
-            .on('mouseout', () => {
+            .on('mouseout', (event) => {
+                const isTouch = event?.pointerType === 'touch' || event?.type?.startsWith('touch');
+                if (isTouch) return;
                 this.tooltip.style('opacity', 0);
             })
             .on('click', (event, d) => {
+                if (isDragging) return;
                 window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(d.name)}`, '_blank');
             })
             .on('dblclick', (event, d) => {
                 // Double-click to release node from fixed position
                 d.fx = null;
                 d.fy = null;
-                simulation.alphaTarget(0.1).restart();
+                simulation.alphaTarget(0.08).restart();
+                setTimeout(() => simulation.alphaTarget(0), 150);
             })
             .call(d3.drag()
-                .filter(event => {
-                    // Only allow drag on desktop or explicit drag events
-                    return !event.touches || event.touches.length === 1;
-                })
                 .on('start', (event, d) => {
-                    // Prevent scroll interference on mobile
-                    if (event.sourceEvent) {
-                        if (event.sourceEvent.type === 'touchstart') {
-                            event.sourceEvent.preventDefault();
-                            event.sourceEvent.stopPropagation();
-                        }
+                    // Prevent native scrolling/gestures only for touch
+                    const se = event.sourceEvent;
+                    const isTouch = se && (se.pointerType === 'touch' || se.type === 'touchstart');
+                    if (isTouch) {
+                        se.preventDefault();
+                        se.stopPropagation();
                     }
+                    isDragging = true;
                     if (!event.active) simulation.alphaTarget(0.05).restart();
                     d.fx = d.x;
                     d.fy = d.y;
@@ -384,21 +405,26 @@ class PathFinderUI {
                 .on('drag', (event, d) => {
                     const padding = 30;
                     // Prevent default touch behaviors during drag
-                    if (event.sourceEvent) {
-                        event.sourceEvent.preventDefault();
+                    const se = event.sourceEvent;
+                    const isTouch = se && (se.pointerType === 'touch' || se.type === 'touchmove');
+                    if (isTouch) {
+                        se.preventDefault();
                     }
                     // Constrain drag within bounds
-                    d.fx = Math.max(padding, Math.min(width - padding, event.x));
-                    d.fy = Math.max(padding, Math.min(calculatedHeight - padding, event.y));
+                    d.fx = Math.max(padding, Math.min(graph.width - padding, event.x));
+                    d.fy = Math.max(padding, Math.min(graph.height - padding, event.y));
                 })
                 .on('end', (event, d) => {
                     if (!event.active) simulation.alphaTarget(0);
                     // Release node to let physics take over for tight binding
                     d.fx = null;
                     d.fy = null;
-                    // Gentle restart to pull nodes back together
-                    simulation.alphaTarget(0.03).restart();
-                    setTimeout(() => simulation.alphaTarget(0), 300);
+                    // Gentle restart to pull nodes back together without jolts
+                    simulation.alphaTarget(0.02).restart();
+                    setTimeout(() => {
+                        simulation.alphaTarget(0);
+                        isDragging = false;
+                    }, 200);
                 }));
 
         // Create label backgrounds (opaque boxes)
@@ -423,16 +449,17 @@ class PathFinderUI {
         // Calculate dynamic link distance based on text lengths
         const maxTextWidth = Math.max(...nodes.map(d => d.textWidth));
         const dynamicDistance = Math.max(80, maxTextWidth + 30);
+        graph.dynamicDistance = dynamicDistance;
 
         // Very tight physics simulation with text-aware spacing
         const simulation = d3.forceSimulation(nodes)
             .force('link', d3.forceLink(links).id(d => d.id)
-                .distance(dynamicDistance)
+                .distance(() => graph.dynamicDistance)
                 .strength(2.0))
             .force('charge', d3.forceManyBody()
                 .strength(-200)
                 .distanceMax(150))
-            .force('center', d3.forceCenter(width / 2, calculatedHeight / 2))
+            .force('center', d3.forceCenter(graph.width / 2, graph.height / 2))
             .force('collision', d3.forceCollide()
                 .radius(d => Math.max(30, d.textWidth / 2 + 10))
                 .strength(1.0))
@@ -452,10 +479,10 @@ class PathFinderUI {
 
             // Constrain node positions and update coordinates
             nodes.forEach(d => {
-                d.x = Math.max(padding, Math.min(width - padding, d.x));
-                d.y = Math.max(padding, Math.min(calculatedHeight - padding, d.y));
+                d.x = Math.max(padding, Math.min(graph.width - padding, d.x));
+                d.y = Math.max(padding, Math.min(graph.height - padding, d.y));
                 // Update truncated text based on current spacing
-                d.displayText = getTruncatedText(d.name, dynamicDistance);
+                d.displayText = getTruncatedText(d.name, graph.dynamicDistance);
             });
 
             link
@@ -588,8 +615,61 @@ document.addEventListener('DOMContentLoaded', () => {
     pathFinderUI = new PathFinderUI();
 });
 
-window.addEventListener('resize', () => {
-    if (pathFinderUI) {
-        pathFinderUI.initializeGraph();
+// Simple debounce to avoid thrashing on mobile address bar show/hide
+function debounce(fn, wait) {
+    let t;
+    return function (...args) {
+        clearTimeout(t);
+        t = setTimeout(() => fn.apply(this, args), wait);
+    };
+}
+
+// Resize without re-rendering: only update svg size and forces
+PathFinderUI.prototype.resizeGraph = function () {
+    if (!graph || !graph.svg || !graph.simulation) return;
+
+    const container = document.getElementById('graphContainer');
+    if (!container) return;
+    const { width: containerWidth } = container.getBoundingClientRect();
+
+    const newWidth = containerWidth - 48; // padding
+    const nodeCount = graph.simulation.nodes().length || 0;
+    const newHeight = Math.max(400, Math.min(600, nodeCount * 60));
+
+    // Update graph dimensions
+    graph.width = newWidth;
+    graph.height = newHeight;
+
+    // Update svg size without wiping elements
+    graph.svg
+        .attr('width', graph.width)
+        .attr('height', graph.height)
+        .attr('viewBox', `0 0 ${graph.width} ${graph.height}`)
+        .style('display', 'block');
+
+    // Update forces to reflect new center and spacing
+    const nodes = graph.simulation.nodes();
+    const maxTextWidth = Math.max(...nodes.map(d => d.textWidth || 0), 0);
+    graph.dynamicDistance = Math.max(80, maxTextWidth + 30);
+
+    const linkForce = graph.simulation.force('link');
+    if (linkForce && typeof linkForce.distance === 'function') {
+        linkForce.distance(() => graph.dynamicDistance);
     }
-});
+
+    graph.simulation
+        .force('center', d3.forceCenter(graph.width / 2, graph.height / 2))
+        .alphaTarget(0.05)
+        .restart();
+
+    // Settle gently
+    setTimeout(() => graph.simulation.alphaTarget(0), 300);
+};
+
+window.addEventListener('resize', debounce(() => {
+    if (!pathFinderUI) return;
+    const sectionVisible = document.getElementById('visualizationSection')?.classList.contains('show');
+    if (sectionVisible) {
+        pathFinderUI.resizeGraph();
+    }
+}, 120));

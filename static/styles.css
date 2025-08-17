@@ -281,8 +281,8 @@ header p {
     position: relative;
     min-height: 500px;
     overflow: visible;
-    /* Prevent mobile scrolling issues */
-    touch-action: none;
+    /* Allow vertical page scroll while still supporting drag */
+    touch-action: pan-y;
 }
 
 .graph-container svg {
@@ -495,13 +495,19 @@ header p {
     fill: var(--accent-blue);
     stroke: var(--bg-primary);
     stroke-width: 2px;
-    cursor: pointer;
+    cursor: grab;
     transition: var(--transition-fast);
+    /* Enable drag on touch without triggering page scroll */
+    touch-action: none;
 }
 
 .node:hover {
     fill: var(--accent-blue-hover);
     stroke-width: 3px;
+}
+
+.node:active {
+    cursor: grabbing;
 }
 
 .node.start {
