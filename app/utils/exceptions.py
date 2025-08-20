@@ -78,6 +78,22 @@ class InvalidPageError(PathFindingError):
         self.code = "INVALID_PAGE"
 
 
+class DisambiguationPageError(PathFindingError):
+    """Raised when a disambiguation page is used as a target."""
+
+    def __init__(self, page_title: str, resolved_title: str = None):
+        self.page_title = page_title
+        self.resolved_title = resolved_title
+
+        if resolved_title and resolved_title != page_title:
+            message = f"'{page_title}' redirects to disambiguation page '{resolved_title}'. Please specify a more specific page."
+        else:
+            message = f"'{page_title}' is a disambiguation page. Please specify a more specific page."
+
+        super().__init__(message, page_title, resolved_title)
+        self.code = "DISAMBIGUATION_PAGE"
+
+
 class CacheError(IrisBaseException):
     """Base exception for cache-related errors."""
 

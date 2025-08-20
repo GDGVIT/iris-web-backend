@@ -2,7 +2,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 from app.core.interfaces import WikipediaClientInterface, CacheServiceInterface
-from app.utils.exceptions import WikipediaAPIError, WikipediaPageNotFoundError
+from app.utils.exceptions import WikipediaAPIError
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -196,6 +196,81 @@ class WikipediaClient(WikipediaClientInterface):
         except requests.RequestException as e:
             logger.error(f"Failed to check page existence for {page_title}: {e}")
             return False
+
+    def get_page_with_redirect_info(self, page_title: str) -> Optional[dict]:
+        """
+        Get page information including redirect details.
+
+        Args:
+            page_title: Wikipedia page title
+
+        Returns:
+            Dict with 'exists', 'final_title', 'was_redirected', 'is_disambiguation'
+        """
+        params = {
+            "action": "query",
+            "format": "json",
+            "titles": page_title,
+            "prop": "info|categories",
+            "redirects": 1,
+        }
+
+        try:
+            response = self.session.get(self.base_url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json().get("query", {})
+
+            # Check for redirects
+            redirects = data.get("redirects", [])
+            was_redirected = len(redirects) > 0
+            final_title = page_title
+
+            if was_redirected:
+                # Find the final redirect target
+                for redirect in redirects:
+                    if redirect.get("from") == page_title:
+                        final_title = redirect.get("to", page_title)
+                        break
+
+            # Check if page exists
+            pages = data.get("pages", {})
+            page_exists = False
+            is_disambiguation = False
+
+            for page_data in pages.values():
+                if "missing" not in page_data:
+                    page_exists = True
+                    current_title = page_data.get("title", "")
+
+                    # Check if it's a disambiguation page
+                    if "(disambiguation)" in current_title.lower():
+                        is_disambiguation = True
+                    else:
+                        # Check categories for disambiguation
+                        categories = page_data.get("categories", [])
+                        for category in categories:
+                            cat_title = category.get("title", "").lower()
+                            if "disambiguation" in cat_title:
+                                is_disambiguation = True
+                                break
+
+            return {
+                "exists": page_exists,
+                "final_title": final_title,
+                "was_redirected": was_redirected,
+                "is_disambiguation": is_disambiguation,
+                "original_title": page_title,
+            }
+
+        except requests.RequestException as e:
+            logger.error(f"Failed to get page redirect info for {page_title}: {e}")
+            return {
+                "exists": False,
+                "final_title": page_title,
+                "was_redirected": False,
+                "is_disambiguation": False,
+                "original_title": page_title,
+            }
 
     def get_page_info(self, page_title: str) -> Optional[dict]:
         """

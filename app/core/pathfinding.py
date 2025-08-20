@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Set, Dict, Optional, Any
+from typing import List, Dict, Optional, Any
 from app.core.interfaces import (
     PathFinderInterface,
     WikipediaClientInterface,
@@ -9,7 +9,6 @@ from app.core.interfaces import (
 from app.utils.exceptions import (
     PathNotFoundError,
     InvalidPageError,
-    WikipediaPageNotFoundError,
 )
 from app.utils.logging import get_logger
 

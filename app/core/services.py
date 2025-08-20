@@ -13,9 +13,8 @@ from app.core.models import (
     WikipediaPage,
 )
 from app.utils.exceptions import (
-    PathNotFoundError,
     InvalidPageError,
-    WikipediaPageNotFoundError,
+    DisambiguationPageError,
 )
 from app.utils.logging import get_logger
 import networkx as nx
@@ -99,16 +98,52 @@ class PathFindingService:
             )
             raise
 
-    def validate_pages(self, start_page: str, end_page: str) -> tuple[bool, bool]:
+    def validate_pages(self, start_page: str, end_page: str) -> tuple[bool, bool, dict]:
         """
-        Validate that both pages exist on Wikipedia.
+        Validate that both pages exist on Wikipedia and check for disambiguation pages.
+
+        Args:
+            start_page: Starting page title
+            end_page: Target page title
 
         Returns:
-            Tuple of (start_exists, end_exists)
+            Tuple of (start_exists, end_exists, validation_details)
+
+        Raises:
+            DisambiguationPageError: When end page is a disambiguation page
         """
-        start_exists = self.wikipedia_client.page_exists(start_page)
-        end_exists = self.wikipedia_client.page_exists(end_page)
-        return start_exists, end_exists
+        # Get detailed info for both pages
+        start_info = self.wikipedia_client.get_page_with_redirect_info(start_page)
+        end_info = self.wikipedia_client.get_page_with_redirect_info(end_page)
+
+        start_exists = start_info.get("exists", False)
+        end_exists = end_info.get("exists", False)
+
+        validation_details = {
+            "start_page": {
+                "original": start_page,
+                "final_title": start_info.get("final_title", start_page),
+                "was_redirected": start_info.get("was_redirected", False),
+                "is_disambiguation": start_info.get("is_disambiguation", False),
+                "exists": start_exists,
+            },
+            "end_page": {
+                "original": end_page,
+                "final_title": end_info.get("final_title", end_page),
+                "was_redirected": end_info.get("was_redirected", False),
+                "is_disambiguation": end_info.get("is_disambiguation", False),
+                "exists": end_exists,
+            },
+        }
+
+        # Check if end page is disambiguation - this should fail
+        if end_exists and end_info.get("is_disambiguation", False):
+            final_title = end_info.get("final_title", end_page)
+            raise DisambiguationPageError(end_page, final_title)
+
+        # Note: We allow start page to be disambiguation as it might have useful links
+
+        return start_exists, end_exists, validation_details
 
 
 class ExploreService:

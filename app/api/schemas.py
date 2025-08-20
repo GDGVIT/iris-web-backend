@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields, validate, ValidationError, post_load
+from marshmallow import Schema, fields, validate, post_load
 from app.core.models import SearchRequest, ExploreRequest
 
 
