@@ -104,9 +104,26 @@ class TestPathFindingService:
 
     def test_validate_pages(self, mock_wikipedia_client, mock_cache_service):
         """Test page validation."""
+
         # Mock Wikipedia client responses
-        mock_wikipedia_client.page_exists.side_effect = (
-            lambda page: page != "NonExistent"
+        def mock_get_page_info(page):
+            if page == "NonExistent":
+                return {
+                    "exists": False,
+                    "final_title": page,
+                    "was_redirected": False,
+                    "is_disambiguation": False,
+                }
+            else:
+                return {
+                    "exists": True,
+                    "final_title": page,
+                    "was_redirected": False,
+                    "is_disambiguation": False,
+                }
+
+        mock_wikipedia_client.get_page_with_redirect_info.side_effect = (
+            mock_get_page_info
         )
 
         mock_path_finder = Mock()
@@ -115,14 +132,22 @@ class TestPathFindingService:
         )
 
         # Test both pages exist
-        start_exists, end_exists = service.validate_pages("Page A", "Page B")
+        start_exists, end_exists, validation_details = service.validate_pages(
+            "Page A", "Page B"
+        )
         assert start_exists is True
         assert end_exists is True
+        assert validation_details["start_page"]["exists"] is True
+        assert validation_details["end_page"]["exists"] is True
 
         # Test one page doesn't exist
-        start_exists, end_exists = service.validate_pages("Page A", "NonExistent")
+        start_exists, end_exists, validation_details = service.validate_pages(
+            "Page A", "NonExistent"
+        )
         assert start_exists is True
         assert end_exists is False
+        assert validation_details["start_page"]["exists"] is True
+        assert validation_details["end_page"]["exists"] is False
 
 
 class TestExploreService:

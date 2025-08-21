@@ -73,4 +73,3 @@ def test_configure_task_routes_and_periodic_tasks():
     configure_periodic_tasks(app)
     assert isinstance(app.conf.beat_schedule, dict)
     assert app.conf.timezone == "UTC"
-

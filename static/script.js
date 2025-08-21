@@ -412,7 +412,17 @@ class PathFinderUI {
         this.hideLoading();
 
         if (!result.path || result.path.length === 0) {
-            // Hide the visualization section and show error
+            // Check if this is actually a nested error response
+            if (result.status === 'FAILURE' && result.error) {
+                // Show the specific error message from the nested result
+                const section = document.getElementById('visualizationSection');
+                section.classList.remove('show');
+                this.showError(result.error);
+                StateManager.clear();
+                return;
+            }
+            
+            // Fallback to generic message for actual empty paths
             const section = document.getElementById('visualizationSection');
             section.classList.remove('show');
             this.showError('No path found between the pages');

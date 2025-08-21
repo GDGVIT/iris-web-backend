@@ -7,6 +7,7 @@ from app.utils.exceptions import (
     InvalidPageError,
     WikipediaAPIError,
     CacheConnectionError,
+    DisambiguationPageError,
 )
 from app.utils.logging import get_logger
 
@@ -88,10 +89,20 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
         # Get pathfinding service with progress callback
         pathfinding_service = get_pathfinding_service(algorithm, progress_update)
 
-        # Validate that pages exist
-        start_exists, end_exists = pathfinding_service.validate_pages(
-            start_page, end_page
-        )
+        # Validate that pages exist and check for disambiguation issues
+        try:
+            start_exists, end_exists, validation_details = (
+                pathfinding_service.validate_pages(start_page, end_page)
+            )
+        except DisambiguationPageError as e:
+            logger.error(f"Task {task_id}: Disambiguation page error - {e}")
+            return {
+                "status": "FAILURE",
+                "error": str(e),
+                "code": "DISAMBIGUATION_PAGE",
+                "start_page": start_page,
+                "end_page": end_page,
+            }
 
         if not start_exists:
             logger.error(f"Task {task_id}: Start page '{start_page}' does not exist")
@@ -171,6 +182,16 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
             "status": "FAILURE",
             "error": str(e),
             "code": "INVALID_PAGE",
+            "start_page": start_page,
+            "end_page": end_page,
+        }
+
+    except DisambiguationPageError as e:
+        logger.error(f"Task {task_id}: Disambiguation page error - {e}")
+        return {
+            "status": "FAILURE",
+            "error": str(e),
+            "code": "DISAMBIGUATION_PAGE",
             "start_page": start_page,
             "end_page": end_page,
         }

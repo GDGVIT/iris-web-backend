@@ -121,4 +121,3 @@ def test_fetch_from_wikipedia_batches_and_merge(monkeypatch):
     assert (len(calls) == 2) and (set(calls[0]) <= set(titles))
     # merged keys exist from both batches
     assert any(k in res for k in ("P0", "P49", "P50", "P74"))
-

@@ -180,5 +180,7 @@ def test_configure_logging_writes_file_handler(tmp_path):
     configure_logging(app)
 
     # File handler should be added when not debug/testing
-    has_file_handler = any(h.__class__.__name__ == "RotatingFileHandler" for h in app.logger.handlers)
+    has_file_handler = any(
+        h.__class__.__name__ == "RotatingFileHandler" for h in app.logger.handlers
+    )
     assert has_file_handler is True
