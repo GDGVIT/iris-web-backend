@@ -12,3 +12,4 @@ nx.html
 CLAUDE.md
 .pytest_cache
 .DS_Store
+.coverage
