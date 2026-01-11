@@ -15,7 +15,7 @@ from app.api.schemas import (
     serialize_response,
     ExploreResultSchema,
 )
-from app.core.factory import get_pathfinding_service, get_explore_service
+from app.core.factory import get_explore_service
 from app.infrastructure.tasks import find_path_task
 from app.utils.logging import get_logger
 
