@@ -37,7 +37,7 @@ class TestRedisBasedBFSPathFinder:
         """Test pathfinding with two-hop path."""
 
         # Mock Wikipedia client responses for BFS levels
-        def mock_get_links_bulk(pages):
+        def mock_get_links_bulk(pages, on_page_fetched=None):
             links_map = {
                 "Page A": ["Page X", "Page Y"],
                 "Page X": ["Page B", "Page Z"],
@@ -130,7 +130,7 @@ class TestRedisBasedBFSPathFinder:
         """Test pathfinding when no path exists between pages."""
 
         # Mock isolated pages - no connecting links
-        def mock_get_links_bulk(pages):
+        def mock_get_links_bulk(pages, on_page_fetched=None):
             # Page A only links to Page X, Page B only links to Page Y (isolated)
             links_map = {
                 "Page A": ["Page X"],
@@ -156,7 +156,7 @@ class TestRedisBasedBFSPathFinder:
         """Test pathfinding when maximum depth is reached."""
 
         # Mock a long chain of pages
-        def mock_get_links_bulk(pages):
+        def mock_get_links_bulk(pages, on_page_fetched=None):
             links_map = {
                 "Page A": ["Page 1"],
                 "Page 1": ["Page 2"],

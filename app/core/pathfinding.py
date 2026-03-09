@@ -1,3 +1,4 @@
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -109,6 +110,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         self.cache_service.set(f"{paths_key}:{start_page}", [start_page], ttl=3600)
 
         nodes_explored = 0
+        nodes_lock = threading.Lock()
         search_start_time = time.time()
 
         while self.queue_service.length(queue_key) > 0:
@@ -126,19 +128,25 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                 )
                 break
 
-            # Report progress once per node so the client sees smooth updates.
-            # The bulk Wikipedia fetch below is unchanged — per-node callbacks
-            # add only cheap Redis SET ops (via update_state), not API calls.
+            # Build a per-page callback fired inside the thread pool as each
+            # Wikipedia response arrives.  This spreads progress updates across
+            # the network round-trip window, giving the client smooth real-time
+            # feedback instead of a single jump after the full batch completes.
+            # nodes_lock guards nodes_explored against concurrent increments.
+            on_page_fetched: Callable[[str, list[str]], None] | None = None
             if self.progress_callback:
-                for item in batch_items:
-                    nodes_explored += 1
-                    self.progress_callback(
+                def on_page_fetched(title: str, _links: list[str]) -> None:
+                    nonlocal nodes_explored
+                    with nodes_lock:
+                        nodes_explored += 1
+                        count = nodes_explored
+                    self.progress_callback(  # type: ignore[misc]
                         {
                             "status": "Searching...",
                             "search_stats": {
-                                "nodes_explored": nodes_explored,
-                                "current_depth": item["depth"],
-                                "last_node": item["page"],
+                                "nodes_explored": count,
+                                "current_depth": current_depth,
+                                "last_node": title,
                                 "queue_size": self.queue_service.length(queue_key),
                             },
                             "search_time_elapsed": round(
@@ -146,16 +154,20 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                             ),
                         }
                     )
-            else:
-                nodes_explored += len(batch_items)
 
-            # Bulk-fetch links for all pages in the batch
+            # Bulk-fetch links for all pages in the batch (parallel API calls)
             page_names = [item["page"] for item in batch_items]
             logger.info(
                 f"Fetching links for batch of {len(page_names)} pages at depth {current_depth}"
             )
             try:
-                links_bulk = self.wikipedia_client.get_links_bulk(page_names)
+                links_bulk = self.wikipedia_client.get_links_bulk(
+                    page_names, on_page_fetched
+                )
+                # When no progress callback is set, on_page_fetched is None and
+                # nodes_explored is never incremented inside the callback — do it here.
+                if on_page_fetched is None:
+                    nodes_explored += len(batch_items)
             except Exception as e:
                 logger.error(
                     f"Failed to get links for batch at depth {current_depth}: {e}"

@@ -1,4 +1,5 @@
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
@@ -34,7 +35,11 @@ class WikipediaClient(WikipediaClientInterface):
             }
         )
 
-    def get_links_bulk(self, page_titles: list[str]) -> dict[str, list[str]]:
+    def get_links_bulk(
+        self,
+        page_titles: list[str],
+        on_page_fetched: Callable[[str, list[str]], None] | None = None,
+    ) -> dict[str, list[str]]:
         """
         Fetches links for a list of pages using efficient bulk API requests with caching.
 
@@ -61,6 +66,8 @@ class WikipediaClient(WikipediaClientInterface):
                 if cached_links is not None:
                     results[title] = cached_links
                     logger.debug(f"Cache hit for page: {title}")
+                    if on_page_fetched:
+                        on_page_fetched(title, cached_links)
                 else:
                     uncached_titles.append(title)
 
@@ -72,7 +79,7 @@ class WikipediaClient(WikipediaClientInterface):
 
         # Fetch uncached titles from Wikipedia API
         if uncached_titles:
-            fresh_results = self._fetch_from_wikipedia(uncached_titles)
+            fresh_results = self._fetch_from_wikipedia(uncached_titles, on_page_fetched)
 
             # Cache the fresh results
             if self.cache_service:
@@ -85,7 +92,11 @@ class WikipediaClient(WikipediaClientInterface):
 
         return results
 
-    def _fetch_from_wikipedia(self, page_titles: list[str]) -> dict[str, list[str]]:
+    def _fetch_from_wikipedia(
+        self,
+        page_titles: list[str],
+        on_page_fetched: Callable[[str, list[str]], None] | None = None,
+    ) -> dict[str, list[str]]:
         """Fetch page links directly from Wikipedia API without caching.
 
         Each title is fetched in its own API call to avoid link starvation:
@@ -93,14 +104,31 @@ class WikipediaClient(WikipediaClientInterface):
         response cap is global, so a page with many links can starve others,
         causing them to return 0 links.  Parallelism is preserved via the
         thread pool.
+
+        `on_page_fetched` is called from worker threads as each response
+        arrives, enabling real-time progress reporting spread across the
+        network round-trip window rather than all at once after all pages
+        have loaded.
         """
         results = {}
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            page_results = list(executor.map(self._fetch_single_page, page_titles))
-
-        for page_result in page_results:
-            results.update(page_result)
+            future_to_title = {
+                executor.submit(self._fetch_single_page, title): title
+                for title in page_titles
+            }
+            for future in as_completed(future_to_title):
+                title = future_to_title[future]
+                try:
+                    page_result = future.result()
+                except WikipediaAPIError:
+                    raise
+                except Exception as e:
+                    logger.error(f"Unexpected error fetching '{title}': {e}")
+                    page_result = {title: []}
+                results.update(page_result)
+                if on_page_fetched:
+                    on_page_fetched(title, page_result.get(title, []))
 
         return results
 

@@ -43,7 +43,7 @@ def test_get_links_bulk_uses_cache_and_fetch(monkeypatch):
     client = WikipediaClient(cache_service=cache)
     # avoid threads and network: patch _fetch_from_wikipedia
     monkeypatch.setattr(
-        client, "_fetch_from_wikipedia", lambda titles: {"Miss": ["B", "C"]}
+        client, "_fetch_from_wikipedia", lambda titles, cb=None: {"Miss": ["B", "C"]}
     )
 
     result = client.get_links_bulk(["Hit", "Miss"])
@@ -113,7 +113,7 @@ def test_get_links_bulk_no_cache_service(monkeypatch):
     """Without a cache service all titles go straight to _fetch_from_wikipedia."""
     client = WikipediaClient()  # no cache_service
     monkeypatch.setattr(
-        client, "_fetch_from_wikipedia", lambda titles: {t: ["L"] for t in titles}
+        client, "_fetch_from_wikipedia", lambda titles, cb=None: {t: ["L"] for t in titles}
     )
     result = client.get_links_bulk(["A", "B"])
     assert result == {"A": ["L"], "B": ["L"]}

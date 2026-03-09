@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any
 
 
@@ -35,8 +36,19 @@ class WikipediaClientInterface(ABC):
     """Abstract interface for Wikipedia API operations."""
 
     @abstractmethod
-    def get_links_bulk(self, page_titles: list[str]) -> dict[str, list[str]]:
-        """Get links for multiple pages in bulk."""
+    def get_links_bulk(
+        self,
+        page_titles: list[str],
+        on_page_fetched: Callable[[str, list[str]], None] | None = None,
+    ) -> dict[str, list[str]]:
+        """Get links for multiple pages in bulk.
+
+        Args:
+            page_titles: Pages to fetch links for.
+            on_page_fetched: Optional callback fired as soon as each page's
+                links are available (cache hit or network response).  May be
+                called from worker threads — must be thread-safe.
+        """
         pass
 
     @abstractmethod

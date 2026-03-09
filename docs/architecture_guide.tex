@@ -536,8 +536,9 @@ A BFS search can take minutes. Without progress updates, the client has no idea:
 \begin{enumerate}[leftmargin=*]
     \item \textbf{Task creates a callback function} that updates Celery task state.
     \item \textbf{Callback is injected} into \texttt{PathFindingService} via constructor.
-    \item \textbf{BFS algorithm calls the callback} every N nodes explored.
-    \item \textbf{Client polls} \texttt{/tasks/status/<id>} and sees real-time progress.
+    \item \textbf{BFS passes an \texttt{on\_page\_fetched} closure} into \texttt{get\_links\_bulk}.
+    \item \textbf{Wikipedia client fires the closure} from worker threads as each API response arrives.
+    \item \textbf{Client polls} \texttt{/tasks/status/<id>} and sees real-time progress spread across the fetch window.
 \end{enumerate}
 
 \subsection{Code Flow}
@@ -583,42 +584,64 @@ def create_pathfinding_service(cls, algorithm="bfs", progress_callback=None):
     return PathFindingService(path_finder, cache_service, wikipedia_client)
 \end{lstlisting}
 
-\subsubsection{Step 3: BFS Calls the Callback Per Node}
+\subsubsection{Step 3: BFS Passes a Closure into the Wikipedia Fetch}
 
-Progress is reported \textbf{once per node} rather than once per batch. This keeps the UI updating smoothly even when BFS is processing a large batch of pages. The bulk Wikipedia fetch is unaffected — the only overhead is one extra Redis \texttt{SET} (via \texttt{update\_state}) per node, which costs $\approx$0.1--0.3\,ms on a co-located Redis instance.
+Rather than firing all progress updates before the Wikipedia API call (which bunches them into a tight loop invisible to polling clients), BFS defines an \texttt{on\_page\_fetched} closure and passes it into \texttt{get\_links\_bulk}.  The Wikipedia client fires this closure \textbf{from worker threads} as each individual HTTP response arrives via \texttt{as\_completed}, spreading updates naturally across the network round-trip window.
 
-\begin{lstlisting}[caption=pathfinding.py -- Per-Node Progress Reporting]
+\begin{lstlisting}[caption=pathfinding.py -- on\_page\_fetched Closure]
 def _perform_bfs_search(self, start_page, end_page, ...):
     nodes_explored = 0
+    nodes_lock = threading.Lock()  # guards against concurrent increments
 
     while self.queue_service.length(queue_key) > 0:
-        # Pop a batch; fetch all their links in one bulk API call
         batch_items = self.queue_service.pop_batch(queue_key, self.batch_size)
+        current_depth = batch_items[0]["depth"]
 
-        # Fire callback once per node for smooth client-side progress.
-        # bulk fetch below is unchanged -- per-node callbacks add only cheap
-        # Redis SET ops, not extra Wikipedia API calls.
+        on_page_fetched = None
         if self.progress_callback:
-            for item in batch_items:
-                nodes_explored += 1
+            def on_page_fetched(title, _links):
+                nonlocal nodes_explored
+                with nodes_lock:
+                    nodes_explored += 1
+                    count = nodes_explored
                 self.progress_callback({
                     "status": "Searching...",
                     "search_stats": {
-                        "nodes_explored": nodes_explored,
-                        "current_depth": item["depth"],
-                        "last_node": item["page"],
+                        "nodes_explored": count,
+                        "current_depth": current_depth,
+                        "last_node": title,
                         "queue_size": self.queue_service.length(queue_key),
                     },
                     "search_time_elapsed": round(time.time() - start_time, 2),
                 })
-        else:
-            nodes_explored += len(batch_items)
 
+        # on_page_fetched fires inside the thread pool as each page resolves
         links_bulk = self.wikipedia_client.get_links_bulk(
-            [item["page"] for item in batch_items]
+            [item["page"] for item in batch_items], on_page_fetched
         )
         # ... process each page's links ...
 \end{lstlisting}
+
+\begin{lstlisting}[caption=wikipedia.py -- Firing the Callback via as\_completed]
+def _fetch_from_wikipedia(self, page_titles, on_page_fetched=None):
+    results = {}
+    with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+        future_to_title = {
+            executor.submit(self._fetch_single_page, title): title
+            for title in page_titles
+        }
+        for future in as_completed(future_to_title):
+            title = future_to_title[future]
+            page_result = future.result()
+            results.update(page_result)
+            if on_page_fetched:
+                on_page_fetched(title, page_result.get(title, []))
+    return results
+\end{lstlisting}
+
+\noindent\textbf{Why this works:} With \texttt{executor.map} all results are collected before returning, so callbacks would still bunch together.  \texttt{as\_completed} yields each future the moment its HTTP response arrives --- progress updates are spread across the \textasciitilde500--2000\,ms fetch window, giving the polling client genuinely smooth feedback.
+
+\noindent\textbf{Thread safety:} \texttt{on\_page\_fetched} is called concurrently from multiple worker threads.  \texttt{nodes\_lock} (a \texttt{threading.Lock}) ensures \texttt{nodes\_explored} is incremented atomically.  \texttt{update\_state} writes to Redis, which is inherently thread-safe.
 
 \subsubsection{Step 4: Client Sees Progress via Polling}
 
