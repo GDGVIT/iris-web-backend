@@ -38,13 +38,13 @@ class PathFindingService:
 
     def find_path(self, request: SearchRequest) -> PathResult:
         """
-        Find the shortest path between two Wikipedia pages.
+        Find a path between two Wikipedia pages using BFS.
 
         Args:
             request: Search request with start and end pages
 
         Returns:
-            PathResult with the shortest path and metadata
+            PathResult with the path and metadata
 
         Raises:
             InvalidPageError: When request is invalid or pages don't exist
@@ -65,7 +65,7 @@ class PathFindingService:
         # Perform pathfinding
         start_time = time.time()
         try:
-            path_result = self.path_finder.find_shortest_path(
+            path_result = self.path_finder.find_path(
                 request.start_page, request.end_page
             )
             search_time = time.time() - start_time

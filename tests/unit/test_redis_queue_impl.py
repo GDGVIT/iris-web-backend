@@ -59,6 +59,36 @@ def test_queue_peek_and_errors(mock_redis):
         q.clear("q")
 
 
+def test_queue_push_error_raises(mock_redis):
+    q = RedisQueue(mock_redis)
+    mock_redis.rpush.side_effect = redis.RedisError("push failed")
+    with pytest.raises(CacheConnectionError):
+        q.push("q", {"x": 1})
+
+
+def test_queue_push_front(mock_redis):
+    q = RedisQueue(mock_redis)
+    q.push_front("q", {"a": 1})
+    mock_redis.lpush.assert_called_once()
+
+    mock_redis.lpush.side_effect = redis.RedisError("front fail")
+    with pytest.raises(CacheConnectionError):
+        q.push_front("q", {"a": 1})
+
+
+def test_queue_pop_batch_zero_count(mock_redis):
+    q = RedisQueue(mock_redis)
+    assert q.pop_batch("q", 0) == []
+    mock_redis.lpop.assert_not_called()
+
+
+def test_queue_push_batch_error(mock_redis):
+    q = RedisQueue(mock_redis)
+    mock_redis.rpush.side_effect = redis.RedisError("batch fail")
+    with pytest.raises(CacheConnectionError):
+        q.push_batch("q", [{"a": 1}])
+
+
 def test_queue_batch_ops(mock_redis):
     q = RedisQueue(mock_redis)
 

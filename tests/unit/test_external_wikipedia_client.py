@@ -1,6 +1,7 @@
 from typing import cast
 from unittest.mock import Mock
 
+import pytest
 import requests
 
 from app.external.wikipedia import WikipediaClient
@@ -106,6 +107,123 @@ def test_page_exists_and_get_page_info_success_and_failure(monkeypatch):
 
     session.set_response({}, raise_exc=requests.RequestException("oops"))
     assert client.get_page_info("T") is None
+
+
+def test_get_links_bulk_no_cache_service(monkeypatch):
+    """Without a cache service all titles go straight to _fetch_from_wikipedia."""
+    client = WikipediaClient()  # no cache_service
+    monkeypatch.setattr(
+        client, "_fetch_from_wikipedia", lambda titles: {t: ["L"] for t in titles}
+    )
+    result = client.get_links_bulk(["A", "B"])
+    assert result == {"A": ["L"], "B": ["L"]}
+
+
+def test_get_links_bulk_empty_returns_empty():
+    client = WikipediaClient()
+    assert client.get_links_bulk([]) == {}
+
+
+def test_fetch_single_page_success_and_error():
+    session = DummySession()
+    client = WikipediaClient(session=cast(requests.Session, session))
+
+    # Successful fetch — page with two article links
+    session.set_response(
+        {
+            "query": {
+                "pages": {
+                    "1": {
+                        "title": "Python",
+                        "links": [
+                            {"title": "Category:Languages"},  # filtered (has colon)
+                            {"title": "Guido van Rossum"},
+                            {
+                                "title": "List of Python topics"
+                            },  # kept (starts with "List of")
+                        ],
+                    }
+                }
+            }
+        }
+    )
+    result = client._fetch_single_page("Python")
+    assert result["Python"] == ["Guido van Rossum", "List of Python topics"]
+
+    # Request error raises WikipediaAPIError
+    from app.utils.exceptions import WikipediaAPIError
+
+    session.set_response({}, raise_exc=requests.RequestException("timeout"))
+    with pytest.raises(WikipediaAPIError):
+        client._fetch_single_page("Python")
+
+
+def test_get_page_with_redirect_info_redirected():
+    session = DummySession()
+    client = WikipediaClient(session=cast(requests.Session, session))
+
+    session.set_response(
+        {
+            "query": {
+                "redirects": [{"from": "AI", "to": "Artificial intelligence"}],
+                "pages": {
+                    "1": {
+                        "title": "Artificial intelligence",
+                        "categories": [],
+                    }
+                },
+            }
+        }
+    )
+    info = client.get_page_with_redirect_info("AI")
+    assert info is not None
+    assert info["exists"] is True
+    assert info["was_redirected"] is True
+    assert info["final_title"] == "Artificial intelligence"
+    assert info["is_disambiguation"] is False
+
+
+def test_get_page_with_redirect_info_disambiguation():
+    session = DummySession()
+    client = WikipediaClient(session=cast(requests.Session, session))
+
+    session.set_response(
+        {
+            "query": {
+                "redirects": [],
+                "pages": {
+                    "1": {
+                        "title": "Mercury",
+                        "categories": [{"title": "All disambiguation pages"}],
+                    }
+                },
+            }
+        }
+    )
+    info = client.get_page_with_redirect_info("Mercury")
+    assert info is not None
+    assert info["exists"] is True
+    assert info["is_disambiguation"] is True
+
+
+def test_get_page_with_redirect_info_missing_and_error():
+    session = DummySession()
+    client = WikipediaClient(session=cast(requests.Session, session))
+
+    # Missing page
+    session.set_response(
+        {"query": {"pages": {"1": {"title": "Ghost", "missing": True}}}}
+    )
+    info = client.get_page_with_redirect_info("Ghost")
+    assert info is not None
+    assert info["exists"] is False
+
+    # Network error returns safe default
+    session.set_response({}, raise_exc=requests.RequestException("net err"))
+    info = client.get_page_with_redirect_info("Ghost")
+    assert info is not None
+    assert info["exists"] is False
+    assert info["was_redirected"] is False
 
 
 def test_fetch_from_wikipedia_parallel_merge(monkeypatch):

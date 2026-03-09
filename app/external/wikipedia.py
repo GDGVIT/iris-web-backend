@@ -105,7 +105,16 @@ class WikipediaClient(WikipediaClientInterface):
         return results
 
     def _fetch_single_page(self, title: str) -> dict[str, list[str]]:
-        """Fetch links for a single Wikipedia page."""
+        """Fetch links for a single Wikipedia page.
+
+        Known limitation: Wikipedia returns at most 500 links per request
+        (pllimit=max for anonymous callers).  Pages with more than 500 links
+        (e.g. "United States", "World War II") return a `continue` token for
+        pagination, which this method does not follow.  BFS therefore only
+        explores the first 500 outgoing links of any given page.  This is
+        acceptable for most articles but may cause sub-optimal paths through
+        high-connectivity hub pages.
+        """
         params = {
             "action": "query",
             "format": "json",

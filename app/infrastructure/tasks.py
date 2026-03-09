@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 )
 def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs"):
     """
-    Celery task for finding shortest path between Wikipedia pages.
+    Celery task for finding a path between Wikipedia pages.
 
     Args:
         start_page: Starting Wikipedia page title

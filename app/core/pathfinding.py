@@ -42,9 +42,9 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         self.batch_size = batch_size
         self.progress_callback = progress_callback
 
-    def find_shortest_path(self, start_page: str, end_page: str) -> dict[str, Any]:
+    def find_path(self, start_page: str, end_page: str) -> dict[str, Any]:
         """
-        Find shortest path using Redis-based BFS to minimize memory usage.
+        Find a path using Redis-based BFS to minimize memory usage.
 
         Args:
             start_page: Starting Wikipedia page
@@ -244,9 +244,9 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         self.queue_service = queue_service
         self.max_depth = max_depth
 
-    def find_shortest_path(self, start_page: str, end_page: str) -> dict[str, Any]:
+    def find_path(self, start_page: str, end_page: str) -> dict[str, Any]:
         """
-        Find shortest path using bidirectional BFS.
+        Find a path using bidirectional BFS.
 
         This implementation is more complex but can be significantly faster
         for longer paths as it reduces the search space exponentially.
@@ -256,4 +256,4 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         regular_finder = RedisBasedBFSPathFinder(
             self.wikipedia_client, self.cache_service, self.queue_service
         )
-        return regular_finder.find_shortest_path(start_page, end_page)
+        return regular_finder.find_path(start_page, end_page)

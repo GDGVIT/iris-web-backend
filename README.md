@@ -8,7 +8,7 @@
 
 ## Iris Wikipedia Pathfinder
 
-Iris finds the shortest path between any two Wikipedia pages by traversing their links.
+Iris finds a path between any two Wikipedia pages by traversing their links.
 
 You give it two page titles — say, "Microsoft" and "Ferrari" — and it walks Wikipedia's link graph using BFS until it finds the connection. Results are visualized as an interactive graph you can drag around.
 
@@ -16,7 +16,7 @@ It uses Redis to store the BFS state instead of holding everything in memory, wh
 
 ## What It Does
 
-- Find shortest Wikipedia paths via Redis-based BFS
+- Find Wikipedia paths via Redis-based BFS (best-effort — not guaranteed shortest)
 - Async task processing — searches run in the background, results polled live
 - Real-time progress updates during search
 - Interactive D3.js graph visualization of the path

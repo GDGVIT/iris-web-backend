@@ -358,7 +358,7 @@ This section justifies key technical decisions from a \textbf{distributed system
 \textbf{Engineering Justification:}
 \begin{itemize}[leftmargin=*, nosep]
     \item \textbf{Memory Safety:} Worker memory stays constant regardless of search depth.
-    \item \textbf{Throughput:} Popping 50 nodes and issuing one bulk API call replaces 50 sequential API round-trips per BFS level. Wikipedia's API accepts up to 50 titles per request.
+    \item \textbf{Throughput:} Popping 50 nodes and dispatching 50 parallel Wikipedia API calls replaces 50 sequential round-trips per BFS level.
     \item \textbf{Observability:} Can inspect queue depth via Redis CLI for debugging.
     \item \textbf{Crash Recovery:} If worker dies, search state persists in Redis (though we restart fresh currently).
 \end{itemize}
@@ -379,21 +379,19 @@ This section justifies key technical decisions from a \textbf{distributed system
 \end{itemize}
 \end{decisionbox}
 
-\begin{decisionbox}{Two-Level Batching: BFS Queue + Wikipedia API}
-\textbf{Problem:} Fetching links one page at a time makes both the BFS loop and the Wikipedia API inefficient.
+\begin{decisionbox}{Wikipedia API Fetching: One Request Per Page}
+\textbf{Problem:} Wikipedia's \texttt{prop=links} API returns at most 500 links per request (\texttt{pllimit=max}). This cap is \textbf{global per API call}, not per title. Grouping multiple titles in one request causes link starvation: a high-link-count hub page (e.g.\ \textit{Microsoft} with 500+ links) consumes the entire 500-link quota, leaving other pages in the same request with 0 links returned.
 
-\textbf{Decision:} Two coordinated batch sizes working together:
-\begin{enumerate}[leftmargin=*, nosep]
-    \item \textbf{BFS layer} pops \texttt{BFS\_BATCH\_SIZE} nodes per iteration and passes them all to \texttt{get\_links\_bulk}.
-    \item \textbf{WikipediaClient} groups those titles into sub-batches of up to \texttt{WIKIPEDIA\_BATCH\_SIZE} (≤50, the API hard limit) and dispatches them in parallel via \texttt{ThreadPoolExecutor}.
-\end{enumerate}
+\textbf{Decision:} Each page title is fetched in its own API call. Parallelism is preserved via \texttt{ThreadPoolExecutor} (\texttt{WIKIPEDIA\_MAX\_WORKERS}, default: 10), so a BFS batch of 50 nodes still issues all 50 requests concurrently.
 
 \textbf{Engineering Justification:}
 \begin{itemize}[leftmargin=*, nosep]
-    \item \textbf{I/O Bound:} Wikipedia API calls are network-bound; threads maximise throughput.
-    \item \textbf{Configurable:} \texttt{WIKIPEDIA\_MAX\_WORKERS} controls parallelism (default: 10). \texttt{WIKIPEDIA\_API\_TIMEOUT} controls per-request timeout (default: 15s).
-    \item \textbf{Rate Limiting:} Implicit rate limiting via thread pool size prevents hammering Wikipedia.
+    \item \textbf{Correctness:} Every page receives its full 500-link allocation regardless of what other pages are in the same BFS batch.
+    \item \textbf{I/O Bound:} Wikipedia API calls are network-bound; threads maximise throughput without the starvation risk of multi-title requests.
+    \item \textbf{Rate Limiting:} Thread pool size implicitly caps concurrent requests to Wikipedia.
 \end{itemize}
+
+\textbf{Known Limitation:} Wikipedia paginates beyond 500 links via a \texttt{continue} token. This implementation does \textbf{not} follow pagination; only the first 500 outgoing links of any page are explored. For most articles this is sufficient, but high-connectivity hub pages may have paths that pass through links beyond the first 500. This is a conscious trade-off: following pagination would multiply API calls for hub pages and add latency for marginal accuracy gain.
 \end{decisionbox}
 
 \begin{decisionbox}{Why Bidirectional BFS Was Abandoned}
@@ -780,7 +778,7 @@ bfs\_queue:<uuid> & Session & BFS queue. Explicitly deleted after search. \\
 \section{Interview Q\&A Cheat Sheet}
 
 \begin{qabox}{If you had to modify the core pathfinding algorithm, where would you go?}
-\textbf{Answer:} \texttt{app/core/pathfinding.py} -- specifically the \texttt{RedisBasedBFSPathFinder} class and its \texttt{find\_shortest\_path()} method.
+\textbf{Answer:} \texttt{app/core/pathfinding.py} -- specifically the \texttt{RedisBasedBFSPathFinder} class and its \texttt{find\_path()} method.
 \end{qabox}
 
 \begin{qabox}{When and where do services get initialized?}

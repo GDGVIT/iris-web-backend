@@ -7,7 +7,7 @@ SWAGGER_TEMPLATE = {
     "swagger": "2.0",
     "info": {
         "title": "Iris Wikipedia Pathfinder API",
-        "description": "Find shortest paths between Wikipedia pages using Redis-based BFS.",
+        "description": "Find paths between Wikipedia pages using Redis-based BFS.",
         "version": "2.0.0",
         "contact": {"name": "Iris"},
         "license": {"name": "MIT"},

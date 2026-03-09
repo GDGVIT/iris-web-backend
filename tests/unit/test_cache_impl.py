@@ -109,6 +109,45 @@ def test_cache_set_if_not_exists(mock_redis):
     # Avoid triggering code path that references non-existent JSONEncodeError
 
 
+def test_cache_set_error_raises(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.setex.side_effect = redis.RedisError("write failed")
+    with pytest.raises(CacheConnectionError):
+        cache.set("k", {"v": 1})
+
+
+def test_cache_set_if_not_exists_error(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.set.side_effect = redis.RedisError("write failed")
+    with pytest.raises(CacheConnectionError):
+        cache.set_if_not_exists("k", {"v": 1})
+
+
+def test_get_links_from_cache_and_set_links(mock_redis):
+    cache = RedisCache(mock_redis)
+    import json
+
+    # set_links_in_cache
+    cache.set_links_in_cache("Python", ["A", "B"])
+    args, _ = mock_redis.setex.call_args
+    assert args[0] == "wiki_links:Python"
+
+    # get_links_from_cache hit
+    mock_redis.get.return_value = json.dumps(["A", "B"])
+    result = cache.get_links_from_cache("Python")
+    assert result == ["A", "B"]
+
+    # get_links_from_cache miss
+    mock_redis.get.return_value = None
+    assert cache.get_links_from_cache("Missing") is None
+
+
+def test_get_ttl_error_returns_minus_one(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.ttl.side_effect = redis.RedisError("err")
+    assert cache.get_ttl("k") == -1
+
+
 def test_get_redis_connection_error(monkeypatch):
     class DummyPool:
         pass

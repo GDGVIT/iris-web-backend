@@ -29,7 +29,7 @@ _STATIC_DIR = os.path.join(
 @main.route("/getPath", methods=["POST"])
 @api_endpoint()
 def get_path_route():
-    """Queue a background task to find the shortest path between two Wikipedia pages.
+    """Queue a background task to find a path between two Wikipedia pages.
     ---
     tags:
       - Pathfinding
@@ -381,7 +381,7 @@ def api_info():
     response_data = {
         "name": "Iris Wikipedia Pathfinder API",
         "version": "2.0.0",
-        "description": "Find shortest paths between Wikipedia pages",
+        "description": "Find paths between Wikipedia pages",
         "endpoints": {
             "POST /getPath": "Start pathfinding between two pages",
             "GET /tasks/status/<task_id>": "Check task status",

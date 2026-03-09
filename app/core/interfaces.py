@@ -59,9 +59,13 @@ class PathFinderInterface(ABC):
     """Abstract interface for path finding algorithms."""
 
     @abstractmethod
-    def find_shortest_path(self, start_page: str, end_page: str) -> dict[str, Any]:
+    def find_path(self, start_page: str, end_page: str) -> dict[str, Any]:
         """
-        Find shortest path between two pages.
+        Find a path between two pages using BFS.
+
+        Returns the first path found — not guaranteed to be the globally
+        shortest due to Wikipedia's 500-link-per-page API cap, which may
+        cause BFS to miss some outgoing links for high-connectivity pages.
 
         Returns:
             Dict with keys:
