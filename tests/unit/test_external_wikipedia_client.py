@@ -113,7 +113,9 @@ def test_get_links_bulk_no_cache_service(monkeypatch):
     """Without a cache service all titles go straight to _fetch_from_wikipedia."""
     client = WikipediaClient()  # no cache_service
     monkeypatch.setattr(
-        client, "_fetch_from_wikipedia", lambda titles, cb=None: {t: ["L"] for t in titles}
+        client,
+        "_fetch_from_wikipedia",
+        lambda titles, cb=None: {t: ["L"] for t in titles},
     )
     result = client.get_links_bulk(["A", "B"])
     assert result == {"A": ["L"], "B": ["L"]}
