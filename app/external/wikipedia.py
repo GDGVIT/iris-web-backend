@@ -92,7 +92,10 @@ class WikipediaClient(WikipediaClientInterface):
         results = {}
 
         # Group titles into batches (Wikipedia API limit: 50 titles per request)
-        batches = [page_titles[i : i + self.batch_size] for i in range(0, len(page_titles), self.batch_size)]
+        batches = [
+            page_titles[i : i + self.batch_size]
+            for i in range(0, len(page_titles), self.batch_size)
+        ]
 
         # Process batches in parallel
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -117,7 +120,9 @@ class WikipediaClient(WikipediaClientInterface):
         }
 
         try:
-            response = self.session.get(self.base_url, params=params, timeout=self.api_timeout)
+            response = self.session.get(
+                self.base_url, params=params, timeout=self.api_timeout
+            )
             response.raise_for_status()
             data = response.json().get("query", {})
         except requests.RequestException as e:
@@ -189,7 +194,9 @@ class WikipediaClient(WikipediaClientInterface):
         }
 
         try:
-            response = self.session.get(self.base_url, params=params, timeout=self.api_timeout)
+            response = self.session.get(
+                self.base_url, params=params, timeout=self.api_timeout
+            )
             response.raise_for_status()
             data = response.json().get("query", {})
 
@@ -221,7 +228,9 @@ class WikipediaClient(WikipediaClientInterface):
         }
 
         try:
-            response = self.session.get(self.base_url, params=params, timeout=self.api_timeout)
+            response = self.session.get(
+                self.base_url, params=params, timeout=self.api_timeout
+            )
             response.raise_for_status()
             data = response.json().get("query", {})
 
@@ -296,7 +305,9 @@ class WikipediaClient(WikipediaClientInterface):
         }
 
         try:
-            response = self.session.get(self.base_url, params=params, timeout=self.api_timeout)
+            response = self.session.get(
+                self.base_url, params=params, timeout=self.api_timeout
+            )
             response.raise_for_status()
             data = response.json().get("query", {})
 

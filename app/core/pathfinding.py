@@ -122,7 +122,9 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
 
             # BFS guarantees monotonically increasing depth — check on first item
             if current_depth > self.max_depth:
-                logger.warning(f"Reached maximum depth {self.max_depth}, stopping search")
+                logger.warning(
+                    f"Reached maximum depth {self.max_depth}, stopping search"
+                )
                 break
 
             # Report progress after each batch
@@ -136,7 +138,9 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                             "last_node": batch_items[-1]["page"],
                             "queue_size": self.queue_service.length(queue_key),
                         },
-                        "search_time_elapsed": round(time.time() - search_start_time, 2),
+                        "search_time_elapsed": round(
+                            time.time() - search_start_time, 2
+                        ),
                     }
                 )
 
@@ -148,7 +152,9 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             try:
                 links_bulk = self.wikipedia_client.get_links_bulk(page_names)
             except Exception as e:
-                logger.error(f"Failed to get links for batch at depth {current_depth}: {e}")
+                logger.error(
+                    f"Failed to get links for batch at depth {current_depth}: {e}"
+                )
                 if isinstance(e, WikipediaAPIError | CacheConnectionError):
                     raise
                 continue
@@ -178,7 +184,9 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                             continue
                         self.cache_service.set(visited_check_key, True, ttl=3600)
                         new_path = current_path + [link]
-                        self.cache_service.set(f"{paths_key}:{link}", new_path, ttl=3600)
+                        self.cache_service.set(
+                            f"{paths_key}:{link}", new_path, ttl=3600
+                        )
                         self.queue_service.push(
                             queue_key, {"page": link, "depth": item["depth"] + 1}
                         )
