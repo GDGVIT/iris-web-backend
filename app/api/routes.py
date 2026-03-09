@@ -56,7 +56,11 @@ def get_path_route():
               type: string
               enum: [bfs, bidirectional]
               default: bfs
-              description: Pathfinding algorithm
+              description: >
+                Pathfinding algorithm. Note: "bidirectional" is accepted but
+                falls back to standard BFS. Bidirectional BFS is infeasible
+                on Wikipedia because incoming links vastly outnumber outgoing
+                links, making the reverse frontier explode.
     responses:
       202:
         description: Task accepted, poll poll_url for results

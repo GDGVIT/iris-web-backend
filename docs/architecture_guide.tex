@@ -391,6 +391,21 @@ This section justifies key technical decisions from a \textbf{distributed system
 \end{itemize}
 \end{decisionbox}
 
+\begin{decisionbox}{Why Bidirectional BFS Was Abandoned}
+\textbf{Problem:} Bidirectional BFS works by expanding two frontiers simultaneously — one from the start and one from the end — and halting when they meet. This can reduce search space from $O(b^d)$ to $O(b^{d/2})$ in uniform graphs.
+
+\textbf{Why It Fails for Wikipedia:}
+\begin{itemize}[leftmargin=*, nosep]
+    \item Wikipedia link graphs are \textbf{highly asymmetric}. A page like \textit{Adolf Hitler} has thousands of \textbf{incoming} links but only hundreds of \textbf{outgoing} links.
+    \item The reverse frontier (expanding backward from the target via incoming links) requires fetching ``what links here'' — a separate Wikipedia API call (\texttt{prop=linkshere}) that returns far larger result sets.
+    \item The reverse frontier explodes in size immediately, eliminating any search space reduction and typically making the search \textbf{slower} than standard BFS.
+\end{itemize}
+
+\textbf{Decision:} Retain only forward BFS. The \texttt{BidirectionalBFSPathFinder} class exists in the codebase and is selectable via the API \texttt{algorithm} parameter, but it delegates directly to \texttt{RedisBasedBFSPathFinder}. The \texttt{algorithm} field is kept in the API for forward compatibility.
+
+\textbf{Trade-off:} Forward BFS with Wikipedia's dense link graph typically finds paths of length 3--5 within seconds. The asymmetry that breaks bidirectional BFS is also what makes forward BFS fast.
+\end{decisionbox}
+
 \begin{decisionbox}{Cache TTLs Tuned to Data Volatility}
 \textbf{Problem:} Wikipedia pages change, but not frequently. Need to balance freshness vs. cache hit rate.
 

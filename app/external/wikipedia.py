@@ -18,11 +18,15 @@ class WikipediaClient(WikipediaClientInterface):
         session: requests.Session | None = None,
         max_workers: int = 10,
         cache_ttl: int = 86400,  # 24 hours
+        api_timeout: int = 15,
+        batch_size: int = 50,  # Wikipedia API hard limit is 50 titles per request
     ):
         self.session = session or requests.Session()
         self.cache_service = cache_service
         self.max_workers = max_workers
         self.cache_ttl = cache_ttl
+        self.api_timeout = api_timeout
+        self.batch_size = min(batch_size, 50)  # Wikipedia API cap
         self.base_url = "https://en.wikipedia.org/w/api.php"
 
         # Configure session
@@ -87,8 +91,8 @@ class WikipediaClient(WikipediaClientInterface):
         """Fetch page links directly from Wikipedia API without caching."""
         results = {}
 
-        # Group titles into batches of 50 (Wikipedia API limit)
-        batches = [page_titles[i : i + 50] for i in range(0, len(page_titles), 50)]
+        # Group titles into batches (Wikipedia API limit: 50 titles per request)
+        batches = [page_titles[i : i + self.batch_size] for i in range(0, len(page_titles), self.batch_size)]
 
         # Process batches in parallel
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -113,7 +117,7 @@ class WikipediaClient(WikipediaClientInterface):
         }
 
         try:
-            response = self.session.get(self.base_url, params=params, timeout=15)
+            response = self.session.get(self.base_url, params=params, timeout=self.api_timeout)
             response.raise_for_status()
             data = response.json().get("query", {})
         except requests.RequestException as e:
@@ -185,7 +189,7 @@ class WikipediaClient(WikipediaClientInterface):
         }
 
         try:
-            response = self.session.get(self.base_url, params=params, timeout=10)
+            response = self.session.get(self.base_url, params=params, timeout=self.api_timeout)
             response.raise_for_status()
             data = response.json().get("query", {})
 
@@ -217,7 +221,7 @@ class WikipediaClient(WikipediaClientInterface):
         }
 
         try:
-            response = self.session.get(self.base_url, params=params, timeout=10)
+            response = self.session.get(self.base_url, params=params, timeout=self.api_timeout)
             response.raise_for_status()
             data = response.json().get("query", {})
 
@@ -292,7 +296,7 @@ class WikipediaClient(WikipediaClientInterface):
         }
 
         try:
-            response = self.session.get(self.base_url, params=params, timeout=10)
+            response = self.session.get(self.base_url, params=params, timeout=self.api_timeout)
             response.raise_for_status()
             data = response.json().get("query", {})
 

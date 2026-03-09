@@ -26,7 +26,6 @@ class BaseConfig:
 
     # Cache settings
     CACHE_TTL = int(os.environ.get("CACHE_TTL", "86400"))  # 24 hours
-    CACHE_PREFIX = os.environ.get("CACHE_PREFIX", "iris")
 
     # Pathfinding settings
     MAX_SEARCH_DEPTH = int(os.environ.get("MAX_SEARCH_DEPTH", "6"))
@@ -44,10 +43,6 @@ class BaseConfig:
         os.environ.get("CELERY_TASK_TIME_LIMIT", "600")
     )  # 10 minutes
 
-    # API settings
-    API_RATE_LIMIT = os.environ.get("API_RATE_LIMIT", "100 per hour")
-    API_TIMEOUT = int(os.environ.get("API_TIMEOUT", "30"))
-
     # Logging settings
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
     LOG_FORMAT = os.environ.get(
@@ -55,11 +50,6 @@ class BaseConfig:
         "%(asctime)s %(levelname)s [%(name)s] %(message)s [in %(pathname)s:%(lineno)d]",
     )
     LOG_DIR = os.environ.get("LOG_DIR", "logs")
-
-    # Health check settings
-    HEALTH_CHECK_ENABLED = (
-        os.environ.get("HEALTH_CHECK_ENABLED", "true").lower() == "true"
-    )
 
     @classmethod
     def validate_config(cls):

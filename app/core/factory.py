@@ -59,11 +59,15 @@ class ServiceFactory:
         if cls._wikipedia_client is None:
             cache_service = cls.get_cache_service()
             max_workers = current_app.config.get("WIKIPEDIA_MAX_WORKERS", 10)
-            cache_ttl = current_app.config.get("CACHE_TTL", 86400)  # 24 hours
+            cache_ttl = current_app.config.get("CACHE_TTL", 86400)
+            api_timeout = current_app.config.get("WIKIPEDIA_API_TIMEOUT", 15)
+            batch_size = current_app.config.get("WIKIPEDIA_BATCH_SIZE", 50)
             cls._wikipedia_client = WikipediaClient(
                 cache_service=cache_service,
                 max_workers=max_workers,
                 cache_ttl=cache_ttl,
+                api_timeout=api_timeout,
+                batch_size=batch_size,
             )
             logger.info("Wikipedia client created with caching enabled")
         return cls._wikipedia_client
