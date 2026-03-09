@@ -98,3 +98,8 @@ class QueueInterface(ABC):
     def push_batch(self, queue_name: str, items: list[Any]) -> None:
         """Push multiple items to queue efficiently."""
         pass
+
+    @abstractmethod
+    def pop_batch(self, queue_name: str, count: int) -> list[Any]:
+        """Pop multiple items from queue efficiently."""
+        pass

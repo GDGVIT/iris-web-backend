@@ -94,187 +94,106 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         visited_key: str,
         paths_key: str,
     ) -> dict[str, Any]:
-        """Perform the actual BFS search using Redis for state management."""
+        """Perform the actual BFS search using Redis for state management.
 
+        Nodes are popped from the queue in batches and their links are fetched
+        in a single bulk Wikipedia API call per batch, minimising round-trips.
+        """
         logger.info(
             f"Starting Redis-based BFS from '{start_page}' to '{end_page}' (session: {session_id})"
         )
 
         # Initialize search state
         self.queue_service.push(queue_key, {"page": start_page, "depth": 0})
-        self.cache_service.set(
-            f"{visited_key}:{start_page}", True, ttl=3600
-        )  # 1 hour TTL
-        self.cache_service.set(
-            f"{paths_key}:{start_page}", [start_page], ttl=3600
-        )  # 1 hour TTL
+        self.cache_service.set(f"{visited_key}:{start_page}", True, ttl=3600)
+        self.cache_service.set(f"{paths_key}:{start_page}", [start_page], ttl=3600)
 
-        # Simple BFS: process one item at a time from the queue
         nodes_explored = 0
         search_start_time = time.time()
 
         while self.queue_service.length(queue_key) > 0:
-            current_item = self.queue_service.pop(queue_key)
-            if not current_item:
+            # Pop a batch of nodes and fetch their links in one API call
+            batch_items = self.queue_service.pop_batch(queue_key, self.batch_size)
+            if not batch_items:
                 break
 
-            current_page = current_item["page"]
-            current_depth = current_item["depth"]
-            nodes_explored += 1
+            nodes_explored += len(batch_items)
+            current_depth = batch_items[0]["depth"]
 
-            logger.info(
-                f"Processing page '{current_page}' at depth {current_depth} (node #{nodes_explored})"
-            )
+            # BFS guarantees monotonically increasing depth — check on first item
+            if current_depth > self.max_depth:
+                logger.warning(f"Reached maximum depth {self.max_depth}, stopping search")
+                break
 
-            # Report progress every 3 nodes
-            if self.progress_callback and nodes_explored % 3 == 0:
-                queue_size = self.queue_service.length(queue_key)
-                elapsed_time = time.time() - search_start_time
-
+            # Report progress after each batch
+            if self.progress_callback:
                 self.progress_callback(
                     {
                         "status": "Searching...",
                         "search_stats": {
                             "nodes_explored": nodes_explored,
                             "current_depth": current_depth,
-                            "last_node": current_page,
-                            "queue_size": queue_size,
+                            "last_node": batch_items[-1]["page"],
+                            "queue_size": self.queue_service.length(queue_key),
                         },
-                        "search_time_elapsed": round(elapsed_time, 2),
+                        "search_time_elapsed": round(time.time() - search_start_time, 2),
                     }
                 )
 
-            # Check depth limit
-            if current_depth > self.max_depth:
-                logger.warning(
-                    f"Reached maximum depth {self.max_depth}, stopping search"
-                )
-                break
-
-            # Get the current path for this page
-            current_path_key = f"{paths_key}:{current_page}"
-            current_path = self.cache_service.get(current_path_key)
-
-            if not current_path:
-                logger.warning(f"No path found for {current_page}, skipping")
-                continue
-
-            # Get links for this page
+            # Bulk-fetch links for all pages in the batch
+            page_names = [item["page"] for item in batch_items]
+            logger.info(
+                f"Fetching links for batch of {len(page_names)} pages at depth {current_depth}"
+            )
             try:
-                links_bulk = self.wikipedia_client.get_links_bulk([current_page])
-                links = links_bulk.get(current_page, [])
-                logger.info(f"Found {len(links)} links from '{current_page}'")
+                links_bulk = self.wikipedia_client.get_links_bulk(page_names)
             except Exception as e:
-                logger.error(f"Failed to get links for {current_page}: {e}")
-                # Re-raise WikipediaAPIError and other critical errors
+                logger.error(f"Failed to get links for batch at depth {current_depth}: {e}")
                 if isinstance(e, WikipediaAPIError | CacheConnectionError):
                     raise
                 continue
 
-            # Process each link
-            for link in links:
-                # Check if we found the target
-                if link == end_page:
-                    final_path = current_path + [link]
-                    logger.info(
-                        f"Path found! Length: {len(final_path)}, explored {nodes_explored} nodes"
-                    )
-                    return {"path": final_path, "nodes_explored": nodes_explored}
+            # Process each page in the batch
+            for item in batch_items:
+                current_page = item["page"]
+                links = links_bulk.get(current_page, [])
+                logger.info(f"Found {len(links)} links from '{current_page}'")
 
-                # Check if already visited
-                visited_check_key = f"{visited_key}:{link}"
-                try:
-                    if self.cache_service.exists(visited_check_key):
-                        continue
-
-                    # Mark as visited and store path (with TTL to prevent accumulation)
-                    self.cache_service.set(
-                        visited_check_key, True, ttl=3600
-                    )  # 1 hour TTL
-                    new_path = current_path + [link]
-                    self.cache_service.set(
-                        f"{paths_key}:{link}", new_path, ttl=3600
-                    )  # 1 hour TTL
-
-                    # Add to queue for next level
-                    self.queue_service.push(
-                        queue_key, {"page": link, "depth": current_depth + 1}
-                    )
-                except Exception as e:
-                    logger.error(f"Cache operation failed for {link}: {e}")
-                    # Re-raise CacheConnectionError and other critical cache errors
-                    if isinstance(e, CacheConnectionError):
-                        raise
+                current_path = self.cache_service.get(f"{paths_key}:{current_page}")
+                if not current_path:
+                    logger.warning(f"No path found for {current_page}, skipping")
                     continue
 
+                for link in links:
+                    if link == end_page:
+                        final_path = current_path + [link]
+                        logger.info(
+                            f"Path found! Length: {len(final_path)}, explored {nodes_explored} nodes"
+                        )
+                        return {"path": final_path, "nodes_explored": nodes_explored}
+
+                    visited_check_key = f"{visited_key}:{link}"
+                    try:
+                        if self.cache_service.exists(visited_check_key):
+                            continue
+                        self.cache_service.set(visited_check_key, True, ttl=3600)
+                        new_path = current_path + [link]
+                        self.cache_service.set(f"{paths_key}:{link}", new_path, ttl=3600)
+                        self.queue_service.push(
+                            queue_key, {"page": link, "depth": current_depth + 1}
+                        )
+                    except Exception as e:
+                        logger.error(f"Cache operation failed for {link}: {e}")
+                        if isinstance(e, CacheConnectionError):
+                            raise
+                        continue
+
             logger.info(
-                f"Finished processing '{current_page}', queue length: {self.queue_service.length(queue_key)}"
+                f"Processed batch of {len(batch_items)} pages, queue length: {self.queue_service.length(queue_key)}"
             )
 
         logger.warning(f"No path found from '{start_page}' to '{end_page}'")
         raise PathNotFoundError(start_page, end_page)
-
-    def _process_depth_level(
-        self,
-        pages_at_depth: list[str],
-        end_page: str,
-        queue_key: str,
-        visited_key: str,
-        paths_key: str,
-        depth: int,
-    ) -> list[str] | None:
-        """Process all pages at a specific depth level."""
-
-        logger.info(f"Processing depth {depth} with {len(pages_at_depth)} pages")
-
-        # Get links for all pages in this batch
-        try:
-            bulk_links = self.wikipedia_client.get_links_bulk(pages_at_depth)
-        except Exception as e:
-            logger.error(f"Failed to get links for batch at depth {depth}: {e}")
-            return None
-
-        # Process each page's links
-        next_level_pages = []
-
-        for current_page in pages_at_depth:
-            links = bulk_links.get(current_page, [])
-            current_path_key = f"{paths_key}:{current_page}"
-            current_path = self.cache_service.get(current_path_key)
-
-            if not current_path:
-                logger.warning(f"No path found for {current_page}, skipping")
-                continue
-
-            for link in links:
-                # Check if we found the target
-                if link == end_page:
-                    final_path = current_path + [link]
-                    logger.info(f"Path found! Length: {len(final_path)}")
-                    return final_path
-
-                # Check if already visited
-                visited_check_key = f"{visited_key}:{link}"
-                if self.cache_service.exists(visited_check_key):
-                    continue
-
-                # Mark as visited and store path (with TTL to prevent accumulation)
-                self.cache_service.set(visited_check_key, True, ttl=3600)  # 1 hour TTL
-                new_path = current_path + [link]
-                self.cache_service.set(
-                    f"{paths_key}:{link}", new_path, ttl=3600
-                )  # 1 hour TTL
-
-                next_level_pages.append({"page": link, "depth": depth + 1})
-
-        # Add next level pages to queue
-        if next_level_pages:
-            self.queue_service.push_batch(queue_key, next_level_pages)
-            logger.info(
-                f"Added {len(next_level_pages)} pages to next level (depth {depth + 1})"
-            )
-
-        return None
 
     def _cleanup_search_state(
         self, queue_key: str, visited_key: str, paths_key: str
