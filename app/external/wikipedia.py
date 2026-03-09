@@ -19,14 +19,12 @@ class WikipediaClient(WikipediaClientInterface):
         max_workers: int = 10,
         cache_ttl: int = 86400,  # 24 hours
         api_timeout: int = 15,
-        batch_size: int = 50,  # Wikipedia API hard limit is 50 titles per request
     ):
         self.session = session or requests.Session()
         self.cache_service = cache_service
         self.max_workers = max_workers
         self.cache_ttl = cache_ttl
         self.api_timeout = api_timeout
-        self.batch_size = min(batch_size, 50)  # Wikipedia API cap
         self.base_url = "https://en.wikipedia.org/w/api.php"
 
         # Configure session
@@ -88,32 +86,30 @@ class WikipediaClient(WikipediaClientInterface):
         return results
 
     def _fetch_from_wikipedia(self, page_titles: list[str]) -> dict[str, list[str]]:
-        """Fetch page links directly from Wikipedia API without caching."""
+        """Fetch page links directly from Wikipedia API without caching.
+
+        Each title is fetched in its own API call to avoid link starvation:
+        when multiple titles share a single `prop=links` request the 500-link
+        response cap is global, so a page with many links can starve others,
+        causing them to return 0 links.  Parallelism is preserved via the
+        thread pool.
+        """
         results = {}
 
-        # Group titles into batches (Wikipedia API limit: 50 titles per request)
-        batches = [
-            page_titles[i : i + self.batch_size]
-            for i in range(0, len(page_titles), self.batch_size)
-        ]
-
-        # Process batches in parallel
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            batch_results = list(executor.map(self._process_batch, batches))
+            page_results = list(executor.map(self._fetch_single_page, page_titles))
 
-        # Merge results from all batches
-        for batch_result in batch_results:
-            results.update(batch_result)
+        for page_result in page_results:
+            results.update(page_result)
 
         return results
 
-    def _process_batch(self, batch: list[str]) -> dict[str, list[str]]:
-        """Process a single batch of up to 50 titles using prop=links."""
-        titles_param = "|".join(batch)
+    def _fetch_single_page(self, title: str) -> dict[str, list[str]]:
+        """Fetch links for a single Wikipedia page."""
         params = {
             "action": "query",
             "format": "json",
-            "titles": titles_param,
+            "titles": title,
             "prop": "links",
             "pllimit": "max",
             "redirects": 1,
@@ -126,10 +122,10 @@ class WikipediaClient(WikipediaClientInterface):
             response.raise_for_status()
             data = response.json().get("query", {})
         except requests.RequestException as e:
-            logger.error(f"Wikipedia API request failed for batch: {e}")
+            logger.error(f"Wikipedia API request failed for '{title}': {e}")
             raise WikipediaAPIError(f"API request failed: {e}")
 
-        return self._parse_batch_response(data, batch)
+        return self._parse_batch_response(data, [title])
 
     def _parse_batch_response(
         self, data: dict, original_batch: list[str]

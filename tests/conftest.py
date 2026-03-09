@@ -115,11 +115,19 @@ def mock_queue_service():
             queues[queue_name] = []
         queues[queue_name].extend(items)
 
+    def mock_pop_batch(queue_name, count):
+        if queue_name not in queues:
+            return []
+        batch = queues[queue_name][:count]
+        queues[queue_name] = queues[queue_name][count:]
+        return batch
+
     mock_queue.push.side_effect = mock_push
     mock_queue.pop.side_effect = mock_pop
     mock_queue.length.side_effect = mock_length
     mock_queue.clear.side_effect = mock_clear
     mock_queue.push_batch.side_effect = mock_push_batch
+    mock_queue.pop_batch.side_effect = mock_pop_batch
 
     return mock_queue
 

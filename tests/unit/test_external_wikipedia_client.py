@@ -108,18 +108,20 @@ def test_page_exists_and_get_page_info_success_and_failure(monkeypatch):
     assert client.get_page_info("T") is None
 
 
-def test_fetch_from_wikipedia_batches_and_merge(monkeypatch):
+def test_fetch_from_wikipedia_parallel_merge(monkeypatch):
     client = WikipediaClient()
-    # bypass network; ensure batching happens by stubbing _process_batch
+    # Each title is fetched individually via _fetch_single_page; stub it to avoid network
     calls = []
 
-    def fake_process(batch):
-        calls.append(tuple(batch))
-        return {batch[0]: ["L1"], batch[-1]: ["L2"]}
+    def fake_fetch_single(title):
+        calls.append(title)
+        return {title: ["L1", "L2"]}
 
-    monkeypatch.setattr(client, "_process_batch", fake_process)
-    titles = [f"P{i}" for i in range(0, 75)]  # will create two batches (50,25)
+    monkeypatch.setattr(client, "_fetch_single_page", fake_fetch_single)
+    titles = [f"P{i}" for i in range(0, 75)]
     res = client._fetch_from_wikipedia(titles)
-    assert (len(calls) == 2) and (set(calls[0]) <= set(titles))
-    # merged keys exist from both batches
-    assert any(k in res for k in ("P0", "P49", "P50", "P74"))
+    # Every title should have been fetched individually
+    assert len(calls) == 75
+    assert set(calls) == set(titles)
+    # All titles present in merged result
+    assert all(t in res for t in titles)

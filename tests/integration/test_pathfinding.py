@@ -203,12 +203,20 @@ class TestRedisBasedBFSPathFinder:
                 queue_data[queue_name] = []
             queue_data[queue_name].extend(items)
 
+        def mock_pop_batch(queue_name, count):
+            if queue_name not in queue_data:
+                return []
+            batch = queue_data[queue_name][:count]
+            queue_data[queue_name] = queue_data[queue_name][count:]
+            return batch
+
         mock_queue_service = Mock()
         mock_queue_service.push.side_effect = mock_push
         mock_queue_service.pop.side_effect = mock_pop
         mock_queue_service.length.side_effect = mock_length
         mock_queue_service.clear.side_effect = mock_clear
         mock_queue_service.push_batch.side_effect = mock_push_batch
+        mock_queue_service.pop_batch.side_effect = mock_pop_batch
 
         # Mock simple path A -> B
         mock_wikipedia_client.page_exists.return_value = True
@@ -224,7 +232,7 @@ class TestRedisBasedBFSPathFinder:
         assert "nodes_explored" in result
         # Verify queue operations were called
         assert mock_queue_service.push.called
-        assert mock_queue_service.pop.called
+        assert mock_queue_service.pop_batch.called
         assert mock_queue_service.clear.called
 
     def test_cache_integration(self, mock_wikipedia_client, mock_queue_service):

@@ -21,7 +21,6 @@ class BaseConfig:
 
     # Wikipedia API settings
     WIKIPEDIA_API_TIMEOUT = int(os.environ.get("WIKIPEDIA_API_TIMEOUT", "15"))
-    WIKIPEDIA_BATCH_SIZE = int(os.environ.get("WIKIPEDIA_BATCH_SIZE", "50"))
     WIKIPEDIA_MAX_WORKERS = int(os.environ.get("WIKIPEDIA_MAX_WORKERS", "10"))
 
     # Cache settings
@@ -64,8 +63,6 @@ class BaseConfig:
         try:
             if cls.WIKIPEDIA_API_TIMEOUT <= 0:
                 errors.append("WIKIPEDIA_API_TIMEOUT must be positive")
-            if cls.WIKIPEDIA_BATCH_SIZE <= 0:
-                errors.append("WIKIPEDIA_BATCH_SIZE must be positive")
             if cls.MAX_SEARCH_DEPTH <= 0:
                 errors.append("MAX_SEARCH_DEPTH must be positive")
         except (ValueError, TypeError):
