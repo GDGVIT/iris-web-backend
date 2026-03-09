@@ -117,7 +117,6 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             if not batch_items:
                 break
 
-            nodes_explored += len(batch_items)
             current_depth = batch_items[0]["depth"]
 
             # BFS guarantees monotonically increasing depth — check on first item
@@ -127,22 +126,28 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                 )
                 break
 
-            # Report progress after each batch
+            # Report progress once per node so the client sees smooth updates.
+            # The bulk Wikipedia fetch below is unchanged — per-node callbacks
+            # add only cheap Redis SET ops (via update_state), not API calls.
             if self.progress_callback:
-                self.progress_callback(
-                    {
-                        "status": "Searching...",
-                        "search_stats": {
-                            "nodes_explored": nodes_explored,
-                            "current_depth": current_depth,
-                            "last_node": batch_items[-1]["page"],
-                            "queue_size": self.queue_service.length(queue_key),
-                        },
-                        "search_time_elapsed": round(
-                            time.time() - search_start_time, 2
-                        ),
-                    }
-                )
+                for item in batch_items:
+                    nodes_explored += 1
+                    self.progress_callback(
+                        {
+                            "status": "Searching...",
+                            "search_stats": {
+                                "nodes_explored": nodes_explored,
+                                "current_depth": item["depth"],
+                                "last_node": item["page"],
+                                "queue_size": self.queue_service.length(queue_key),
+                            },
+                            "search_time_elapsed": round(
+                                time.time() - search_start_time, 2
+                            ),
+                        }
+                    )
+            else:
+                nodes_explored += len(batch_items)
 
             # Bulk-fetch links for all pages in the batch
             page_names = [item["page"] for item in batch_items]

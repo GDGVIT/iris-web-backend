@@ -583,29 +583,36 @@ def create_pathfinding_service(cls, algorithm="bfs", progress_callback=None):
     return PathFindingService(path_finder, cache_service, wikipedia_client)
 \end{lstlisting}
 
-\subsubsection{Step 3: BFS Calls the Callback Periodically}
+\subsubsection{Step 3: BFS Calls the Callback Per Node}
 
-\begin{lstlisting}[caption=pathfinding.py -- Invoking the Callback]
+Progress is reported \textbf{once per node} rather than once per batch. This keeps the UI updating smoothly even when BFS is processing a large batch of pages. The bulk Wikipedia fetch is unaffected — the only overhead is one extra Redis \texttt{SET} (via \texttt{update\_state}) per node, which costs $\approx$0.1--0.3\,ms on a co-located Redis instance.
+
+\begin{lstlisting}[caption=pathfinding.py -- Per-Node Progress Reporting]
 def _perform_bfs_search(self, start_page, end_page, ...):
     nodes_explored = 0
 
     while self.queue_service.length(queue_key) > 0:
-        # Pop a batch; fetch all their links in one API call
+        # Pop a batch; fetch all their links in one bulk API call
         batch_items = self.queue_service.pop_batch(queue_key, self.batch_size)
-        nodes_explored += len(batch_items)
 
-        # Report progress once per batch
+        # Fire callback once per node for smooth client-side progress.
+        # bulk fetch below is unchanged -- per-node callbacks add only cheap
+        # Redis SET ops, not extra Wikipedia API calls.
         if self.progress_callback:
-            self.progress_callback({
-                "status": "Searching...",
-                "search_stats": {
-                    "nodes_explored": nodes_explored,
-                    "current_depth": batch_items[0]["depth"],
-                    "last_node": batch_items[-1]["page"],
-                    "queue_size": self.queue_service.length(queue_key),
-                },
-                "search_time_elapsed": round(time.time() - start_time, 2),
-            })
+            for item in batch_items:
+                nodes_explored += 1
+                self.progress_callback({
+                    "status": "Searching...",
+                    "search_stats": {
+                        "nodes_explored": nodes_explored,
+                        "current_depth": item["depth"],
+                        "last_node": item["page"],
+                        "queue_size": self.queue_service.length(queue_key),
+                    },
+                    "search_time_elapsed": round(time.time() - start_time, 2),
+                })
+        else:
+            nodes_explored += len(batch_items)
 
         links_bulk = self.wikipedia_client.get_links_bulk(
             [item["page"] for item in batch_items]
