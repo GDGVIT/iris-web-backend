@@ -37,7 +37,7 @@ It uses Redis to store the BFS state instead of holding everything in memory, wh
 ## Quick Start
 
 ```bash
-git clone https://github.com/mdhishaamakhtar/wikiweb-backend
+git clone https://github.com/mdhishaamakhtar/iris-web-backend
 cd iris-web-backend
 
 python3 -m venv env && source env/bin/activate
