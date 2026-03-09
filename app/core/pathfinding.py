@@ -1,14 +1,19 @@
+import time
 import uuid
-from typing import List, Dict, Optional, Any
+from collections.abc import Callable
+from typing import Any
+
 from app.core.interfaces import (
-    PathFinderInterface,
-    WikipediaClientInterface,
     CacheServiceInterface,
+    PathFinderInterface,
     QueueInterface,
+    WikipediaClientInterface,
 )
 from app.utils.exceptions import (
-    PathNotFoundError,
+    CacheConnectionError,
     InvalidPageError,
+    PathNotFoundError,
+    WikipediaAPIError,
 )
 from app.utils.logging import get_logger
 
@@ -28,7 +33,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         queue_service: QueueInterface,
         max_depth: int = 6,
         batch_size: int = 50,
-        progress_callback: Optional[callable] = None,
+        progress_callback: Callable | None = None,
     ):
         self.wikipedia_client = wikipedia_client
         self.cache_service = cache_service
@@ -37,7 +42,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         self.batch_size = batch_size
         self.progress_callback = progress_callback
 
-    def find_shortest_path(self, start_page: str, end_page: str) -> Dict[str, Any]:
+    def find_shortest_path(self, start_page: str, end_page: str) -> dict[str, Any]:
         """
         Find shortest path using Redis-based BFS to minimize memory usage.
 
@@ -88,7 +93,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         queue_key: str,
         visited_key: str,
         paths_key: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Perform the actual BFS search using Redis for state management."""
 
         logger.info(
@@ -106,8 +111,6 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
 
         # Simple BFS: process one item at a time from the queue
         nodes_explored = 0
-        import time
-
         search_start_time = time.time()
 
         while self.queue_service.length(queue_key) > 0:
@@ -164,8 +167,6 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             except Exception as e:
                 logger.error(f"Failed to get links for {current_page}: {e}")
                 # Re-raise WikipediaAPIError and other critical errors
-                from app.utils.exceptions import WikipediaAPIError, CacheConnectionError
-
                 if isinstance(e, (WikipediaAPIError, CacheConnectionError)):
                     raise
                 continue
@@ -202,8 +203,6 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                 except Exception as e:
                     logger.error(f"Cache operation failed for {link}: {e}")
                     # Re-raise CacheConnectionError and other critical cache errors
-                    from app.utils.exceptions import CacheConnectionError
-
                     if isinstance(e, CacheConnectionError):
                         raise
                     continue
@@ -217,13 +216,13 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
 
     def _process_depth_level(
         self,
-        pages_at_depth: List[str],
+        pages_at_depth: list[str],
         end_page: str,
         queue_key: str,
         visited_key: str,
         paths_key: str,
         depth: int,
-    ) -> Optional[List[str]]:
+    ) -> list[str] | None:
         """Process all pages at a specific depth level."""
 
         logger.info(f"Processing depth {depth} with {len(pages_at_depth)} pages")
@@ -318,7 +317,7 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         self.queue_service = queue_service
         self.max_depth = max_depth
 
-    def find_shortest_path(self, start_page: str, end_page: str) -> Dict[str, Any]:
+    def find_shortest_path(self, start_page: str, end_page: str) -> dict[str, Any]:
         """
         Find shortest path using bidirectional BFS.
 

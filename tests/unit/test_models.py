@@ -1,13 +1,13 @@
 from app.core.models import (
-    PathResult,
-    ExploreResult,
-    SearchRequest,
-    ExploreRequest,
-    WikipediaPage,
-    TaskStatus,
-    TaskInfo,
     CacheStats,
+    ExploreRequest,
+    ExploreResult,
     HealthStatus,
+    PathResult,
+    SearchRequest,
+    TaskInfo,
+    TaskStatus,
+    WikipediaPage,
 )
 
 
@@ -110,7 +110,10 @@ class TestExploreResult:
     def test_invalid_explore_result_empty_nodes(self):
         """Test ExploreResult with empty nodes."""
         result = ExploreResult(
-            start_page="Test Page", nodes=[], edges=[], total_links=0  # Empty nodes
+            start_page="Test Page",
+            nodes=[],
+            edges=[],
+            total_links=0,  # Empty nodes
         )
 
         assert result.is_valid is False

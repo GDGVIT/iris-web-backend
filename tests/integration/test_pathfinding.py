@@ -1,7 +1,9 @@
-import pytest
 from unittest.mock import Mock
-from app.core.pathfinding import RedisBasedBFSPathFinder, BidirectionalBFSPathFinder
-from app.utils.exceptions import PathNotFoundError, InvalidPageError
+
+import pytest
+
+from app.core.pathfinding import BidirectionalBFSPathFinder, RedisBasedBFSPathFinder
+from app.utils.exceptions import InvalidPageError, PathNotFoundError
 
 
 class TestRedisBasedBFSPathFinder:
@@ -91,8 +93,8 @@ class TestRedisBasedBFSPathFinder:
     ):
         """Test pathfinding when start page doesn't exist."""
         # Mock start page doesn't exist
-        mock_wikipedia_client.page_exists.side_effect = (
-            lambda page: page != "NonExistent"
+        mock_wikipedia_client.page_exists.side_effect = lambda page: (
+            page != "NonExistent"
         )
 
         pathfinder = RedisBasedBFSPathFinder(
@@ -109,8 +111,8 @@ class TestRedisBasedBFSPathFinder:
     ):
         """Test pathfinding when end page doesn't exist."""
         # Mock end page doesn't exist
-        mock_wikipedia_client.page_exists.side_effect = (
-            lambda page: page != "NonExistent"
+        mock_wikipedia_client.page_exists.side_effect = lambda page: (
+            page != "NonExistent"
         )
 
         pathfinder = RedisBasedBFSPathFinder(

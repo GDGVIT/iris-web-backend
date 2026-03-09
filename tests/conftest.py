@@ -1,9 +1,11 @@
-import pytest
 import os
 from unittest.mock import Mock, patch
+
+import pytest
+
 from app import create_app
-from config.testing import TestingConfig
 from app.core.factory import ServiceFactory
+from config.testing import TestingConfig
 
 
 @pytest.fixture(scope="session")

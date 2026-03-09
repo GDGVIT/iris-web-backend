@@ -1,5 +1,7 @@
-import requests
+from typing import cast
 from unittest.mock import Mock
+
+import requests
 
 from app.external.wikipedia import WikipediaClient
 
@@ -78,7 +80,7 @@ def test_parse_batch_response_redirects_and_filtering():
 
 def test_page_exists_and_get_page_info_success_and_failure(monkeypatch):
     session = DummySession()
-    client = WikipediaClient(session=session)
+    client = WikipediaClient(session=cast(requests.Session, session))
 
     # Page exists
     session.set_response({"query": {"pages": {"1": {"title": "X"}}}})

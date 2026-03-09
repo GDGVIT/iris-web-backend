@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List, Optional
 from enum import Enum
 
 
@@ -17,12 +16,12 @@ class TaskStatus(Enum):
 class PathResult:
     """Result of a pathfinding operation."""
 
-    path: List[str]
+    path: list[str]
     length: int
     start_page: str
     end_page: str
-    search_time: Optional[float] = None
-    nodes_explored: Optional[int] = None
+    search_time: float | None = None
+    nodes_explored: int | None = None
 
     @property
     def is_valid(self) -> bool:
@@ -40,8 +39,8 @@ class ExploreResult:
     """Result of an explore operation."""
 
     start_page: str
-    nodes: List[str]
-    edges: List[tuple]
+    nodes: list[str]
+    edges: list[tuple]
     total_links: int
 
     @property
@@ -60,11 +59,11 @@ class TaskInfo:
 
     task_id: str
     status: TaskStatus
-    result: Optional[dict] = None
-    error: Optional[str] = None
-    progress: Optional[dict] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    result: dict | None = None
+    error: str | None = None
+    progress: dict | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 @dataclass
@@ -73,8 +72,8 @@ class SearchRequest:
 
     start_page: str
     end_page: str
-    max_depth: Optional[int] = None
-    algorithm: Optional[str] = "bfs"
+    max_depth: int | None = None
+    algorithm: str | None = "bfs"
 
     def validate(self) -> bool:
         """Validate the search request."""
@@ -90,7 +89,7 @@ class ExploreRequest:
     """Request for page exploration."""
 
     start_page: str
-    max_links: Optional[int] = None
+    max_links: int | None = None
 
     def validate(self) -> bool:
         """Validate the explore request."""
@@ -102,9 +101,9 @@ class WikipediaPage:
     """Represents a Wikipedia page."""
 
     title: str
-    page_id: Optional[int] = None
-    last_modified: Optional[str] = None
-    links: Optional[List[str]] = None
+    page_id: int | None = None
+    last_modified: str | None = None
+    links: list[str] | None = None
 
     @property
     def is_valid(self) -> bool:
@@ -117,9 +116,9 @@ class CacheStats:
     """Cache statistics."""
 
     total_keys: int
-    memory_usage: Optional[int] = None
-    hit_rate: Optional[float] = None
-    miss_rate: Optional[float] = None
+    memory_usage: int | None = None
+    hit_rate: float | None = None
+    miss_rate: float | None = None
 
 
 @dataclass
@@ -131,4 +130,4 @@ class HealthStatus:
     celery_status: str
     wikipedia_api_status: str
     timestamp: str
-    details: Optional[dict] = None
+    details: dict | None = None

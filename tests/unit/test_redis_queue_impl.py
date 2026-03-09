@@ -1,6 +1,7 @@
 import json
-import redis
+
 import pytest
+import redis
 
 from app.infrastructure.redis_queue import RedisQueue
 from app.utils.exceptions import CacheConnectionError

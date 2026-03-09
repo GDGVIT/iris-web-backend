@@ -1,8 +1,10 @@
-import pytest
 from unittest.mock import Mock, patch
-from app.core.services import PathFindingService, ExploreService, WikipediaService
-from app.core.models import SearchRequest, ExploreRequest, PathResult, ExploreResult
-from app.utils.exceptions import PathNotFoundError, InvalidPageError
+
+import pytest
+
+from app.core.models import ExploreRequest, ExploreResult, PathResult, SearchRequest
+from app.core.services import ExploreService, PathFindingService, WikipediaService
+from app.utils.exceptions import InvalidPageError, PathNotFoundError
 
 
 class TestPathFindingService:

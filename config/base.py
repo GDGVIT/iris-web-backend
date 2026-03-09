@@ -1,5 +1,7 @@
 import os
+
 from dotenv import load_dotenv
+
 from app.utils.exceptions import ConfigurationError
 
 # Load environment variables from .env file

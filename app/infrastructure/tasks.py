@@ -1,13 +1,15 @@
 import requests
+from celery.schedules import crontab
+
 from app import celery
 from app.core.factory import get_pathfinding_service
 from app.core.models import SearchRequest
 from app.utils.exceptions import (
-    PathNotFoundError,
-    InvalidPageError,
-    WikipediaAPIError,
     CacheConnectionError,
     DisambiguationPageError,
+    InvalidPageError,
+    PathNotFoundError,
+    WikipediaAPIError,
 )
 from app.utils.logging import get_logger
 
@@ -91,8 +93,8 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
 
         # Validate that pages exist and check for disambiguation issues
         try:
-            start_exists, end_exists, validation_details = (
-                pathfinding_service.validate_pages(start_page, end_page)
+            start_exists, end_exists, _ = pathfinding_service.validate_pages(
+                start_page, end_page
             )
         except DisambiguationPageError as e:
             logger.error(f"Task {task_id}: Disambiguation page error - {e}")
@@ -350,8 +352,6 @@ def configure_task_routes(app):
 
 
 # Periodic tasks (if using celery beat)
-from celery.schedules import crontab
-
 app_periodic_tasks = {
     # Clean up old BFS search state every hour
     "cleanup-bfs-cache": {

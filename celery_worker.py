@@ -1,5 +1,5 @@
 # Import the Flask app and Celery instances from the app factory
-from app import create_app, celery
+from app import create_app
 
 # Create the Flask app instance
 app = create_app()

@@ -1,11 +1,14 @@
+from collections.abc import Callable
+
 from flask import current_app
+
+from app.core.pathfinding import BidirectionalBFSPathFinder, RedisBasedBFSPathFinder
 from app.core.services import (
-    PathFindingService,
-    ExploreService,
-    WikipediaService,
     CacheManagementService,
+    ExploreService,
+    PathFindingService,
+    WikipediaService,
 )
-from app.core.pathfinding import RedisBasedBFSPathFinder, BidirectionalBFSPathFinder
 from app.external.wikipedia import WikipediaClient
 from app.infrastructure.cache import RedisCache, get_redis_connection
 from app.infrastructure.redis_queue import RedisQueue
@@ -67,7 +70,7 @@ class ServiceFactory:
 
     @classmethod
     def create_pathfinding_service(
-        cls, algorithm: str = "bfs", progress_callback: callable = None
+        cls, algorithm: str = "bfs", progress_callback: Callable | None = None
     ) -> PathFindingService:
         """Create pathfinding service with specified algorithm."""
         wikipedia_client = cls.get_wikipedia_client()
@@ -133,7 +136,7 @@ class ServiceFactory:
 
 
 def get_pathfinding_service(
-    algorithm: str = "bfs", progress_callback: callable = None
+    algorithm: str = "bfs", progress_callback: Callable | None = None
 ) -> PathFindingService:
     """Convenience function to get pathfinding service."""
     return ServiceFactory.create_pathfinding_service(algorithm, progress_callback)

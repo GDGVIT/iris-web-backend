@@ -1,6 +1,7 @@
 import json
-import redis
+
 import pytest
+import redis
 
 from app.infrastructure.cache import RedisCache, get_redis_connection
 from app.utils.exceptions import CacheConnectionError
@@ -12,7 +13,7 @@ def test_cache_get_and_set_success(mock_redis):
     # set should serialize JSON and call setex
     cache.set("k1", {"a": 1})
     mock_redis.setex.assert_called_once()
-    args, kwargs = mock_redis.setex.call_args
+    args, _kwargs = mock_redis.setex.call_args
     assert args[0] == "k1"
     assert args[1] == 123
     assert json.loads(args[2]) == {"a": 1}

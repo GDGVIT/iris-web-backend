@@ -1,7 +1,8 @@
-import requests
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional
-from app.core.interfaces import WikipediaClientInterface, CacheServiceInterface
+
+import requests
+
+from app.core.interfaces import CacheServiceInterface, WikipediaClientInterface
 from app.utils.exceptions import WikipediaAPIError
 from app.utils.logging import get_logger
 
@@ -13,8 +14,8 @@ class WikipediaClient(WikipediaClientInterface):
 
     def __init__(
         self,
-        cache_service: Optional[CacheServiceInterface] = None,
-        session: Optional[requests.Session] = None,
+        cache_service: CacheServiceInterface | None = None,
+        session: requests.Session | None = None,
         max_workers: int = 10,
         cache_ttl: int = 86400,  # 24 hours
     ):
@@ -31,7 +32,7 @@ class WikipediaClient(WikipediaClientInterface):
             }
         )
 
-    def get_links_bulk(self, page_titles: List[str]) -> Dict[str, List[str]]:
+    def get_links_bulk(self, page_titles: list[str]) -> dict[str, list[str]]:
         """
         Fetches links for a list of pages using efficient bulk API requests with caching.
 
@@ -82,7 +83,7 @@ class WikipediaClient(WikipediaClientInterface):
 
         return results
 
-    def _fetch_from_wikipedia(self, page_titles: List[str]) -> Dict[str, List[str]]:
+    def _fetch_from_wikipedia(self, page_titles: list[str]) -> dict[str, list[str]]:
         """Fetch page links directly from Wikipedia API without caching."""
         results = {}
 
@@ -99,7 +100,7 @@ class WikipediaClient(WikipediaClientInterface):
 
         return results
 
-    def _process_batch(self, batch: List[str]) -> Dict[str, List[str]]:
+    def _process_batch(self, batch: list[str]) -> dict[str, list[str]]:
         """Process a single batch of up to 50 titles using prop=links."""
         titles_param = "|".join(batch)
         params = {
@@ -122,8 +123,8 @@ class WikipediaClient(WikipediaClientInterface):
         return self._parse_batch_response(data, batch)
 
     def _parse_batch_response(
-        self, data: dict, original_batch: List[str]
-    ) -> Dict[str, List[str]]:
+        self, data: dict, original_batch: list[str]
+    ) -> dict[str, list[str]]:
         """Parse Wikipedia API response and extract links."""
         results = {}
 
@@ -134,7 +135,7 @@ class WikipediaClient(WikipediaClientInterface):
         }
 
         # Parse pages and extract links
-        for page_id, page_data in data.get("pages", {}).items():
+        for _page_id, page_data in data.get("pages", {}).items():
             title = page_data.get("title")
             if not title or "missing" in page_data:
                 continue
@@ -197,7 +198,7 @@ class WikipediaClient(WikipediaClientInterface):
             logger.error(f"Failed to check page existence for {page_title}: {e}")
             return False
 
-    def get_page_with_redirect_info(self, page_title: str) -> Optional[dict]:
+    def get_page_with_redirect_info(self, page_title: str) -> dict | None:
         """
         Get page information including redirect details.
 
@@ -272,7 +273,7 @@ class WikipediaClient(WikipediaClientInterface):
                 "original_title": page_title,
             }
 
-    def get_page_info(self, page_title: str) -> Optional[dict]:
+    def get_page_info(self, page_title: str) -> dict | None:
         """
         Get basic information about a Wikipedia page.
 

@@ -1,7 +1,6 @@
 amqp==5.3.1
 async-timeout==5.0.1
 billiard==4.2.1
-black==25.1.0
 blinker==1.9.0
 celery==5.5.3
 certifi==2025.7.9
@@ -12,6 +11,7 @@ click-plugins==1.1.1.2
 click-repl==0.3.0
 coverage==7.10.1
 exceptiongroup==1.3.0
+flasgger==0.9.7.1
 Flask==3.1.1
 gunicorn==23.0.0
 idna==3.10
@@ -21,11 +21,8 @@ Jinja2==3.1.6
 kombu==5.5.4
 MarkupSafe==3.0.2
 marshmallow==3.22.0
-mypy_extensions==1.1.0
 networkx==3.4.2
 packaging==25.0
-pathspec==0.12.1
-platformdirs==4.3.8
 pluggy==1.6.0
 prompt_toolkit==3.0.51
 pytest==8.3.3
@@ -36,8 +33,8 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.1.1
 redis==6.2.0
 requests==2.32.4
+ruff==0.11.2
 six==1.17.0
-tomli==2.2.1
 typing_extensions==4.14.1
 tzdata==2025.2
 urllib3==2.5.0

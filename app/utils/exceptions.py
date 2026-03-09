@@ -1,7 +1,7 @@
 class IrisBaseException(Exception):
     """Base exception for all Iris application exceptions."""
 
-    def __init__(self, message: str = None, code: str = None):
+    def __init__(self, message: str | None = None, code: str | None = None):
         self.message = message or "An application error occurred"
         self.code = code or self.__class__.__name__
         super().__init__(self.message)
@@ -10,7 +10,7 @@ class IrisBaseException(Exception):
 class WikipediaError(IrisBaseException):
     """Base exception for Wikipedia-related errors."""
 
-    def __init__(self, message: str = None, page_title: str = None):
+    def __init__(self, message: str | None = None, page_title: str | None = None):
         self.page_title = page_title
         if not message and page_title:
             message = f"Wikipedia error for page '{page_title}'"
@@ -29,10 +29,10 @@ class WikipediaPageNotFoundError(WikipediaError):
 class WikipediaAPIError(WikipediaError):
     """Raised when Wikipedia API request fails."""
 
-    def __init__(self, message: str = None, status_code: int = None):
+    def __init__(self, message: str | None = None, status_code: int | None = None):
         self.status_code = status_code
         if not message:
-            message = f"Wikipedia API request failed"
+            message = "Wikipedia API request failed"
             if status_code:
                 message += f" (status {status_code})"
         super().__init__(message)
@@ -43,7 +43,10 @@ class PathFindingError(IrisBaseException):
     """Base exception for path finding errors."""
 
     def __init__(
-        self, message: str = None, start_page: str = None, end_page: str = None
+        self,
+        message: str | None = None,
+        start_page: str | None = None,
+        end_page: str | None = None,
     ):
         self.start_page = start_page
         self.end_page = end_page
@@ -55,7 +58,7 @@ class PathFindingError(IrisBaseException):
 class PathNotFoundError(PathFindingError):
     """Raised when no path is found between two pages."""
 
-    def __init__(self, start_page: str, end_page: str, max_depth: int = None):
+    def __init__(self, start_page: str, end_page: str, max_depth: int | None = None):
         message = f"No path found from '{start_page}' to '{end_page}'"
         if max_depth:
             message += f" within {max_depth} steps"
@@ -67,7 +70,7 @@ class PathNotFoundError(PathFindingError):
 class InvalidPageError(PathFindingError):
     """Raised when an invalid page is provided."""
 
-    def __init__(self, message: str = None, page_title: str = None):
+    def __init__(self, message: str | None = None, page_title: str | None = None):
         self.page_title = page_title
         if not message:
             if page_title:
@@ -81,7 +84,7 @@ class InvalidPageError(PathFindingError):
 class DisambiguationPageError(PathFindingError):
     """Raised when a disambiguation page is used as a target."""
 
-    def __init__(self, page_title: str, resolved_title: str = None):
+    def __init__(self, page_title: str, resolved_title: str | None = None):
         self.page_title = page_title
         self.resolved_title = resolved_title
 
@@ -97,7 +100,7 @@ class DisambiguationPageError(PathFindingError):
 class CacheError(IrisBaseException):
     """Base exception for cache-related errors."""
 
-    def __init__(self, message: str = None, operation: str = None):
+    def __init__(self, message: str | None = None, operation: str | None = None):
         self.operation = operation
         if not message:
             message = "Cache operation failed"
@@ -109,7 +112,7 @@ class CacheError(IrisBaseException):
 class CacheConnectionError(CacheError):
     """Raised when Redis connection fails."""
 
-    def __init__(self, message: str = None):
+    def __init__(self, message: str | None = None):
         if not message:
             message = "Redis connection failed"
         super().__init__(message, "connection")
@@ -119,7 +122,7 @@ class CacheConnectionError(CacheError):
 class TaskError(IrisBaseException):
     """Base exception for task-related errors."""
 
-    def __init__(self, message: str = None, task_id: str = None):
+    def __init__(self, message: str | None = None, task_id: str | None = None):
         self.task_id = task_id
         if not message:
             message = "Task execution failed"
@@ -131,7 +134,7 @@ class TaskError(IrisBaseException):
 class TaskTimeoutError(TaskError):
     """Raised when a task times out."""
 
-    def __init__(self, task_id: str = None, timeout: int = None):
+    def __init__(self, task_id: str | None = None, timeout: int | None = None):
         message = "Task timed out"
         if task_id:
             message = f"Task {task_id} timed out"
@@ -145,7 +148,7 @@ class TaskTimeoutError(TaskError):
 class ConfigurationError(IrisBaseException):
     """Raised when configuration is invalid or missing."""
 
-    def __init__(self, message: str = None, config_key: str = None):
+    def __init__(self, message: str | None = None, config_key: str | None = None):
         self.config_key = config_key
         if not message:
             if config_key:

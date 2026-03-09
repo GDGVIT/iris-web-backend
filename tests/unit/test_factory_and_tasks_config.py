@@ -1,12 +1,10 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import pytest
-
 from app import create_app
-from config.testing import TestingConfig
 from app.core.factory import ServiceFactory
-from app.infrastructure.tasks import configure_task_routes, configure_periodic_tasks
+from app.infrastructure.tasks import configure_periodic_tasks, configure_task_routes
+from config.testing import TestingConfig
 
 
 def test_service_factory_lifecycle(monkeypatch):

@@ -1,6 +1,8 @@
 import json
+from typing import Any
+
 import redis
-from typing import Any, Optional, List
+
 from app.core.interfaces import QueueInterface
 from app.utils.exceptions import CacheConnectionError
 from app.utils.logging import get_logger
@@ -19,7 +21,7 @@ class RedisQueue(QueueInterface):
         try:
             serialized_item = json.dumps(item)
             self.redis_client.rpush(queue_name, serialized_item)
-        except (redis.RedisError, json.JSONEncodeError) as e:
+        except (redis.RedisError, TypeError, ValueError) as e:
             logger.error(f"Failed to push item to queue {queue_name}: {e}")
             raise CacheConnectionError(f"Queue push failed: {e}")
 
@@ -28,17 +30,17 @@ class RedisQueue(QueueInterface):
         try:
             serialized_item = json.dumps(item)
             self.redis_client.lpush(queue_name, serialized_item)
-        except (redis.RedisError, json.JSONEncodeError) as e:
+        except (redis.RedisError, TypeError, ValueError) as e:
             logger.error(f"Failed to push item to front of queue {queue_name}: {e}")
             raise CacheConnectionError(f"Queue push front failed: {e}")
 
-    def pop(self, queue_name: str) -> Optional[Any]:
+    def pop(self, queue_name: str) -> Any | None:
         """Pop item from the left side of the queue (FIFO)."""
         try:
             item = self.redis_client.lpop(queue_name)
             if item is None:
                 return None
-            return json.loads(item)
+            return json.loads(item)  # type: ignore[arg-type]
         except (redis.RedisError, json.JSONDecodeError) as e:
             logger.error(f"Failed to pop item from queue {queue_name}: {e}")
             raise CacheConnectionError(f"Queue pop failed: {e}")
@@ -46,7 +48,7 @@ class RedisQueue(QueueInterface):
     def length(self, queue_name: str) -> int:
         """Get the length of the queue."""
         try:
-            return self.redis_client.llen(queue_name)
+            return self.redis_client.llen(queue_name)  # type: ignore[return-value]
         except redis.RedisError as e:
             logger.error(f"Failed to get queue length for {queue_name}: {e}")
             raise CacheConnectionError(f"Queue length check failed: {e}")
@@ -59,7 +61,7 @@ class RedisQueue(QueueInterface):
             logger.error(f"Failed to clear queue {queue_name}: {e}")
             raise CacheConnectionError(f"Queue clear failed: {e}")
 
-    def push_batch(self, queue_name: str, items: List[Any]) -> None:
+    def push_batch(self, queue_name: str, items: list[Any]) -> None:
         """Push multiple items to the queue efficiently."""
         if not items:
             return
@@ -67,11 +69,11 @@ class RedisQueue(QueueInterface):
         try:
             serialized_items = [json.dumps(item) for item in items]
             self.redis_client.rpush(queue_name, *serialized_items)
-        except (redis.RedisError, json.JSONEncodeError) as e:
+        except (redis.RedisError, TypeError, ValueError) as e:
             logger.error(f"Failed to push batch to queue {queue_name}: {e}")
             raise CacheConnectionError(f"Queue batch push failed: {e}")
 
-    def pop_batch(self, queue_name: str, count: int) -> List[Any]:
+    def pop_batch(self, queue_name: str, count: int) -> list[Any]:
         """Pop multiple items from the queue efficiently."""
         if count <= 0:
             return []
@@ -82,19 +84,19 @@ class RedisQueue(QueueInterface):
                 item = self.redis_client.lpop(queue_name)
                 if item is None:
                     break
-                items.append(json.loads(item))
+                items.append(json.loads(item))  # type: ignore[arg-type]
             return items
         except (redis.RedisError, json.JSONDecodeError) as e:
             logger.error(f"Failed to pop batch from queue {queue_name}: {e}")
             raise CacheConnectionError(f"Queue batch pop failed: {e}")
 
-    def peek(self, queue_name: str, index: int = 0) -> Optional[Any]:
+    def peek(self, queue_name: str, index: int = 0) -> Any | None:
         """Peek at an item in the queue without removing it."""
         try:
             item = self.redis_client.lindex(queue_name, index)
             if item is None:
                 return None
-            return json.loads(item)
+            return json.loads(item)  # type: ignore[arg-type]
         except (redis.RedisError, json.JSONDecodeError) as e:
             logger.error(f"Failed to peek at queue {queue_name}: {e}")
             return None
