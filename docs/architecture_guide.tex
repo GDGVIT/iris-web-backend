@@ -207,6 +207,7 @@ iris-web-backend/
 |   |   |-- routes.py            # API endpoints (Flask blueprints)
 |   |   |-- middleware.py        # Decorators: error handling, logging, CORS
 |   |   |-- schemas.py           # Marshmallow schemas for validation
+|   |   |-- swagger.py           # Flasgger config + API metadata (paths from docstrings)
 |   |-- core/                    # Core business logic (THE BRAIN)
 |   |   |-- factory.py           # Dependency Injection (ServiceFactory)
 |   |   |-- interfaces.py        # Abstract interfaces (contracts)
@@ -241,8 +242,8 @@ The codebase follows a \textbf{layered architecture} similar to Clean Architectu
 \toprule
 Layer & Responsibility \\
 \midrule
-HTTP API Layer \newline \footnotesize\texttt{app/api/} & 
-Receives HTTP requests, validates input using Marshmallow schemas, applies cross-cutting middleware (CORS, logging, error handling), delegates to business services, and formats JSON responses. \\
+HTTP API Layer \newline \footnotesize\texttt{app/api/} &
+Receives HTTP requests, validates input using Marshmallow schemas, applies cross-cutting middleware (CORS, logging, error handling), delegates to business services, and formats JSON responses. Swagger spec is auto-assembled from YAML docstrings on each route function via Flasgger. \\
 \addlinespace[0.5em]
 Business Services \newline \footnotesize\texttt{app/core/services.py} & 
 Orchestrates business operations. Checks cache before invoking pathfinding, coordinates between pathfinders and Wikipedia client, encapsulates use cases like ``find path'' or ``explore page.'' \\
@@ -869,6 +870,7 @@ POST & /explore & Explore links from a page. \\
 GET & /health & System health check. \\
 GET & /api & API information. \\
 POST & /cache/clear & Admin: clear cache by pattern. \\
+GET & /api/docs & Swagger UI (interactive API documentation). \\
 \bottomrule
 \end{tabularx}
 
