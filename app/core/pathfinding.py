@@ -226,6 +226,26 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                             raise
                         continue
 
+                # Fire once per page after its links are enqueued so queue_size
+                # reflects the newly added nodes.  This covers the link-processing
+                # gap where no Wikipedia fetch is in flight and the UI would
+                # otherwise stall between batches.
+                if self.progress_callback:
+                    self.progress_callback(
+                        {
+                            "status": "Searching...",
+                            "search_stats": {
+                                "nodes_explored": nodes_explored,
+                                "current_depth": current_depth,
+                                "last_node": current_page,
+                                "queue_size": self.queue_service.length(queue_key),
+                            },
+                            "search_time_elapsed": round(
+                                time.time() - search_start_time, 2
+                            ),
+                        }
+                    )
+
             logger.info(
                 f"Processed batch of {len(batch_items)} pages, queue length: {self.queue_service.length(queue_key)}"
             )

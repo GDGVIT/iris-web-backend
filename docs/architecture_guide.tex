@@ -655,7 +655,48 @@ def _fetch_from_wikipedia(self, page_titles, on_page_fetched=None):
 
 \noindent\textbf{Loop variable capture (B023):} Python closures capture variables by reference, not by value. If \texttt{current\_depth} were referenced as a free variable inside the closure, all threads would see whatever value it holds when they \emph{execute}, not when the closure was \emph{defined} --- a classic late-binding bug. Binding it as a keyword-only default argument (\texttt{\_d=current\_depth}) forces evaluation at definition time, making each iteration's closure hold its own snapshot of the depth.
 
-\noindent\textbf{Queue size is intentionally stale within a batch.}  \texttt{queue\_size} is read by calling \texttt{self.queue\_service.length(queue\_key)} inside the callback, which fires \emph{during} the Wikipedia fetch, before the newly discovered links from this batch have been enqueued.  The value therefore reflects the queue after the \texttt{pop\_batch} removed the current batch, but before the link-processing loop pushes any new nodes.  This is a known and acceptable trade-off: \texttt{queue\_size} is a rough UI hint, not a precise count.  \texttt{nodes\_explored} and \texttt{current\_depth} are always accurate.
+\noindent\textbf{Queue size during the fetch phase is stale.}  \texttt{on\_page\_fetched} fires \emph{during} the Wikipedia fetch, before the link-processing loop has pushed any new nodes.  The \texttt{queue\_size} at that point reflects the queue after \texttt{pop\_batch} removed the current batch but before any new discoveries are enqueued — it will read lower than reality until the next batch starts.
+
+\subsubsection{Step 3b: Link-Processing Callbacks Close the UI Gap}
+
+After \texttt{get\_links\_bulk} returns, the link-processing loop runs: for each of the 50 pages, it checks the visited set, stores new paths in Redis, and pushes newly discovered nodes onto the queue.  This loop is entirely Redis round-trips and can take several seconds for pages with hundreds of links.  No Wikipedia fetch is in flight during this time, so without intervention the client would stall — polling every second and seeing unchanged values.
+
+To prevent this, \texttt{progress\_callback} is fired once per page \emph{after} its links have been enqueued.  At that point \texttt{queue\_size} reflects the newly added nodes, so the client sees the queue growing in real time:
+
+\begin{lstlisting}[caption=pathfinding.py -- Link-Processing Callbacks]
+for item in batch_items:
+    current_page = item["page"]
+    links = links_bulk.get(current_page, [])
+    current_path = self.cache_service.get(f"{paths_key}:{current_page}")
+
+    for link in links:
+        if link == end_page:
+            return {"path": current_path + [link], ...}
+        # check visited, store path, push to queue ...
+
+    # Fire after all links for this page are enqueued.
+    # queue_size now reflects the newly added nodes.
+    if self.progress_callback:
+        self.progress_callback({
+            "status": "Searching...",
+            "search_stats": {
+                "nodes_explored": nodes_explored,
+                "current_depth": current_depth,
+                "last_node": current_page,
+                "queue_size": self.queue_service.length(queue_key),
+            },
+            "search_time_elapsed": round(time.time() - start_time, 2),
+        })
+\end{lstlisting}
+
+\noindent\textbf{Combined update rate per batch:}
+\begin{itemize}[leftmargin=*, nosep]
+    \item \textbf{During Wikipedia fetch:} up to 50 callbacks fired from worker threads as HTTP responses arrive via \texttt{as\_completed}.
+    \item \textbf{During link processing:} 50 callbacks fired sequentially, one per page, as its links are enqueued.
+    \item \textbf{Total:} up to 100 \texttt{update\_state} Redis writes per batch.  With the client polling every 1\,s and each batch taking 2--8\,s, the client observes meaningfully different state on every poll throughout the entire batch.
+\end{itemize}
+
+\noindent\textbf{Redis cost is negligible.}  Each callback is 1 \texttt{SET} (\texttt{update\_state}) + 1 \texttt{LLEN} (\texttt{queue\_size}) = 2 ops.  100 callbacks = 200 extra ops per batch.  The link-processing loop itself already performs $\sim$60\,000 Redis ops per batch (visited checks, path stores, queue pushes).  The callbacks add $<$0.4\% overhead regardless of the number of concurrent searches.
 
 \subsubsection{Step 4: Client Sees Progress via Polling}
 
