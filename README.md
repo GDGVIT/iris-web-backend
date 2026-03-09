@@ -71,9 +71,11 @@ Swagger docs at [http://localhost:9020/api/docs](http://localhost:9020/api/docs)
 ## Dev
 
 ```bash
-pytest -v         # run tests
-ruff format .     # format
-ruff check .      # lint
+pytest -v                                    # run tests
+pytest --cov=app --cov-report=term-missing   # run tests with coverage
+pytest --cov=app --cov-report=html           # generate HTML coverage report (open htmlcov/index.html)
+ruff format .                                # format
+ruff check .                                 # lint
 ```
 
 ## Contributors
