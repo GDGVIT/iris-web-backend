@@ -133,9 +133,20 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             # the network round-trip window, giving the client smooth real-time
             # feedback instead of a single jump after the full batch completes.
             # nodes_lock guards nodes_explored against concurrent increments.
+            #
+            # _depth captures current_depth by value (avoids ruff B023: loop
+            # variable capture).  if/else lets basedpyright infer the correct
+            # Callable | None union without a redundant pre-declaration.
+            # Pre-declare so basedpyright knows the union type across both branches.
             on_page_fetched: Callable[[str, list[str]], None] | None = None
             if self.progress_callback:
-                def on_page_fetched(title: str, _links: list[str]) -> None:
+
+                def _on_page_fetched(
+                    title: str,
+                    _links: list[str],
+                    *,
+                    _d: int = current_depth,  # default arg binds value at def time (B023)
+                ) -> None:
                     nonlocal nodes_explored
                     with nodes_lock:
                         nodes_explored += 1
@@ -145,7 +156,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                             "status": "Searching...",
                             "search_stats": {
                                 "nodes_explored": count,
-                                "current_depth": current_depth,
+                                "current_depth": _d,
                                 "last_node": title,
                                 "queue_size": self.queue_service.length(queue_key),
                             },
@@ -154,6 +165,8 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                             ),
                         }
                     )
+
+                on_page_fetched = _on_page_fetched
 
             # Bulk-fetch links for all pages in the batch (parallel API calls)
             page_names = [item["page"] for item in batch_items]
