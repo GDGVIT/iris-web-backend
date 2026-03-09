@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://dscvit.com">
-    <img src="https://user-images.githubusercontent.com/30529572/72455010-fb38d400-37e7-11ea-9c1e-8cdeb5f5906e.png" width="120" />
+    <img src="https://user-images.githubusercontent.com/30529572/72455010-fb38d400-37e7-11ea-9c1e-8cdeb5f5906e.png"/>
   </a>
 </p>
 
@@ -10,7 +10,7 @@
 
 Iris finds the shortest path between any two Wikipedia pages by traversing their links.
 
-You give it two page titles — say, "Octopus" and "Adolf Hitler" — and it walks Wikipedia's link graph using BFS until it finds the connection. Results are visualized as an interactive graph you can drag around.
+You give it two page titles — say, "Microsoft" and "Ferrari" — and it walks Wikipedia's link graph using BFS until it finds the connection. Results are visualized as an interactive graph you can drag around.
 
 It uses Redis to store the BFS state instead of holding everything in memory, which keeps it from blowing up on deep searches.
 

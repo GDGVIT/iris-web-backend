@@ -15,7 +15,9 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.basedpyright]
-pythonVersion = "3.11"
+pythonVersion = "3.10"
+venvPath = "."
+venv = "env"
 typeCheckingMode = "standard"
 reportMissingImports = true
 reportUnusedImport = true

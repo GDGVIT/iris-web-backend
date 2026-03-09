@@ -167,7 +167,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             except Exception as e:
                 logger.error(f"Failed to get links for {current_page}: {e}")
                 # Re-raise WikipediaAPIError and other critical errors
-                if isinstance(e, (WikipediaAPIError, CacheConnectionError)):
+                if isinstance(e, WikipediaAPIError | CacheConnectionError):
                     raise
                 continue
 
