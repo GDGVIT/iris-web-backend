@@ -180,7 +180,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                         new_path = current_path + [link]
                         self.cache_service.set(f"{paths_key}:{link}", new_path, ttl=3600)
                         self.queue_service.push(
-                            queue_key, {"page": link, "depth": current_depth + 1}
+                            queue_key, {"page": link, "depth": item["depth"] + 1}
                         )
                     except Exception as e:
                         logger.error(f"Cache operation failed for {link}: {e}")
