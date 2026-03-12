@@ -1,7 +1,11 @@
-from flask import Flask
-from celery import Celery
-from app.utils.logging import configure_logging
+import os
 
+from celery import Celery
+from flasgger import Swagger
+from flask import Flask
+
+from app.api.swagger import SWAGGER_CONFIG, SWAGGER_TEMPLATE
+from app.utils.logging import configure_logging
 
 # Initialize Celery
 celery = Celery(__name__)
@@ -12,15 +16,11 @@ def create_app(config_class=None):
     Creates and configures the Flask application instance.
     This is the application factory.
     """
-    import os
-
     static_folder = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
     app = Flask(__name__, static_folder=static_folder)
 
     # Determine configuration class
     if config_class is None:
-        import os
-
         env = os.environ.get("FLASK_ENV", "development")
         if env == "production":
             from config.production import ProductionConfig
@@ -46,6 +46,9 @@ def create_app(config_class=None):
     # Configure Celery
     configure_celery(app)
 
+    # Initialize Swagger UI
+    Swagger(app, template=SWAGGER_TEMPLATE, config=SWAGGER_CONFIG)
+
     # Register blueprints
     register_blueprints(app)
 
@@ -68,7 +71,7 @@ def configure_celery(app):
     )
 
     # Configure task routes and periodic tasks
-    from app.infrastructure.tasks import configure_task_routes, configure_periodic_tasks
+    from app.infrastructure.tasks import configure_periodic_tasks, configure_task_routes
 
     configure_task_routes(celery)
     configure_periodic_tasks(celery)
@@ -95,8 +98,9 @@ def register_blueprints(app):
 def register_error_handlers(app):
     """Register global error handlers."""
     from flask import jsonify
-    from app.utils.exceptions import IrisBaseException
     from marshmallow import ValidationError
+
+    from app.utils.exceptions import IrisBaseException
 
     @app.errorhandler(IrisBaseException)
     def handle_iris_exception(e):

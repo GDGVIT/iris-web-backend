@@ -1,11 +1,14 @@
+from collections.abc import Callable
+
 from flask import current_app
+
+from app.core.pathfinding import BidirectionalBFSPathFinder, RedisBasedBFSPathFinder
 from app.core.services import (
-    PathFindingService,
-    ExploreService,
-    WikipediaService,
     CacheManagementService,
+    ExploreService,
+    PathFindingService,
+    WikipediaService,
 )
-from app.core.pathfinding import RedisBasedBFSPathFinder, BidirectionalBFSPathFinder
 from app.external.wikipedia import WikipediaClient
 from app.infrastructure.cache import RedisCache, get_redis_connection
 from app.infrastructure.redis_queue import RedisQueue
@@ -56,18 +59,20 @@ class ServiceFactory:
         if cls._wikipedia_client is None:
             cache_service = cls.get_cache_service()
             max_workers = current_app.config.get("WIKIPEDIA_MAX_WORKERS", 10)
-            cache_ttl = current_app.config.get("CACHE_TTL", 86400)  # 24 hours
+            cache_ttl = current_app.config.get("CACHE_TTL", 86400)
+            api_timeout = current_app.config.get("WIKIPEDIA_API_TIMEOUT", 15)
             cls._wikipedia_client = WikipediaClient(
                 cache_service=cache_service,
                 max_workers=max_workers,
                 cache_ttl=cache_ttl,
+                api_timeout=api_timeout,
             )
             logger.info("Wikipedia client created with caching enabled")
         return cls._wikipedia_client
 
     @classmethod
     def create_pathfinding_service(
-        cls, algorithm: str = "bfs", progress_callback: callable = None
+        cls, algorithm: str = "bfs", progress_callback: Callable | None = None
     ) -> PathFindingService:
         """Create pathfinding service with specified algorithm."""
         wikipedia_client = cls.get_wikipedia_client()
@@ -133,7 +138,7 @@ class ServiceFactory:
 
 
 def get_pathfinding_service(
-    algorithm: str = "bfs", progress_callback: callable = None
+    algorithm: str = "bfs", progress_callback: Callable | None = None
 ) -> PathFindingService:
     """Convenience function to get pathfinding service."""
     return ServiceFactory.create_pathfinding_service(algorithm, progress_callback)

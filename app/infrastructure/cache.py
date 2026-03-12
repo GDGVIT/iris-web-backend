@@ -1,6 +1,8 @@
-import redis
 import json
-from typing import Any, Optional
+from typing import Any
+
+import redis
+
 from app.core.interfaces import CacheServiceInterface
 from app.utils.exceptions import CacheConnectionError
 from app.utils.logging import get_logger
@@ -15,24 +17,24 @@ class RedisCache(CacheServiceInterface):
         self.redis_client = redis_client
         self.default_ttl = default_ttl
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """Get value from cache by key."""
         try:
             value = self.redis_client.get(key)
             if value is None:
                 return None
-            return json.loads(value)
+            return json.loads(value)  # type: ignore[arg-type]
         except (redis.RedisError, json.JSONDecodeError) as e:
             logger.error(f"Failed to get value from cache for key {key}: {e}")
             raise CacheConnectionError(f"Cache get failed: {e}")
 
-    def set(self, key: str, value: Any, ttl: int = None) -> None:
+    def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         """Set value in cache with optional TTL."""
         try:
             ttl = ttl or self.default_ttl
             serialized_value = json.dumps(value)
             self.redis_client.setex(key, ttl, serialized_value)
-        except (redis.RedisError, json.JSONEncodeError) as e:
+        except (redis.RedisError, TypeError, ValueError) as e:
             logger.error(f"Failed to set value in cache for key {key}: {e}")
             raise CacheConnectionError(f"Cache set failed: {e}")
 
@@ -52,12 +54,14 @@ class RedisCache(CacheServiceInterface):
             logger.error(f"Failed to check key existence in cache: {key}: {e}")
             raise CacheConnectionError(f"Cache exists check failed: {e}")
 
-    def get_links_from_cache(self, page_title: str) -> Optional[list]:
+    def get_links_from_cache(self, page_title: str) -> list | None:
         """Retrieves a list of links for a Wikipedia page from the cache."""
         cache_key = f"wiki_links:{page_title}"
         return self.get(cache_key)
 
-    def set_links_in_cache(self, page_title: str, links: list, ttl: int = None) -> None:
+    def set_links_in_cache(
+        self, page_title: str, links: list, ttl: int | None = None
+    ) -> None:
         """Stores a list of links for a page in the cache."""
         cache_key = f"wiki_links:{page_title}"
         self.set(cache_key, links, ttl)
@@ -67,7 +71,7 @@ class RedisCache(CacheServiceInterface):
         try:
             keys = self.redis_client.keys(pattern)
             if keys:
-                return self.redis_client.delete(*keys)
+                return self.redis_client.delete(*keys)  # type: ignore[return-value,arg-type]
             return 0
         except redis.RedisError as e:
             logger.error(f"Failed to clear keys with pattern {pattern}: {e}")
@@ -76,7 +80,7 @@ class RedisCache(CacheServiceInterface):
     def get_ttl(self, key: str) -> int:
         """Get TTL for a key."""
         try:
-            return self.redis_client.ttl(key)
+            return self.redis_client.ttl(key)  # type: ignore[return-value]
         except redis.RedisError as e:
             logger.error(f"Failed to get TTL for key {key}: {e}")
             return -1
@@ -84,18 +88,18 @@ class RedisCache(CacheServiceInterface):
     def increment(self, key: str, amount: int = 1) -> int:
         """Increment a numeric value in cache."""
         try:
-            return self.redis_client.incrby(key, amount)
+            return self.redis_client.incrby(key, amount)  # type: ignore[return-value]
         except redis.RedisError as e:
             logger.error(f"Failed to increment key {key}: {e}")
             raise CacheConnectionError(f"Cache increment failed: {e}")
 
-    def set_if_not_exists(self, key: str, value: Any, ttl: int = None) -> bool:
+    def set_if_not_exists(self, key: str, value: Any, ttl: int | None = None) -> bool:
         """Set value only if key doesn't exist."""
         try:
             ttl = ttl or self.default_ttl
             serialized_value = json.dumps(value)
             return bool(self.redis_client.set(key, serialized_value, ex=ttl, nx=True))
-        except (redis.RedisError, json.JSONEncodeError) as e:
+        except (redis.RedisError, TypeError, ValueError) as e:
             logger.error(f"Failed to set value if not exists for key {key}: {e}")
             raise CacheConnectionError(f"Cache set if not exists failed: {e}")
 

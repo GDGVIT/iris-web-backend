@@ -1,8 +1,19 @@
-import pytest
 from unittest.mock import Mock, patch
-from app.core.services import PathFindingService, ExploreService, WikipediaService
-from app.core.models import SearchRequest, ExploreRequest, PathResult, ExploreResult
-from app.utils.exceptions import PathNotFoundError, InvalidPageError
+
+import pytest
+
+from app.core.models import ExploreRequest, ExploreResult, PathResult, SearchRequest
+from app.core.services import (
+    CacheManagementService,
+    ExploreService,
+    PathFindingService,
+    WikipediaService,
+)
+from app.utils.exceptions import (
+    DisambiguationPageError,
+    InvalidPageError,
+    PathNotFoundError,
+)
 
 
 class TestPathFindingService:
@@ -12,7 +23,7 @@ class TestPathFindingService:
         """Test successful pathfinding."""
         # Mock path finder
         mock_path_finder = Mock()
-        mock_path_finder.find_shortest_path.return_value = {
+        mock_path_finder.find_path.return_value = {
             "path": ["Page A", "Page B", "Page C"],
             "nodes_explored": 10,
         }
@@ -70,7 +81,7 @@ class TestPathFindingService:
         # Assert
         assert isinstance(result, PathResult)
         assert result.path == cached_data["path"]
-        mock_path_finder.find_shortest_path.assert_not_called()
+        mock_path_finder.find_path.assert_not_called()
 
     def test_find_path_invalid_request(self, mock_wikipedia_client, mock_cache_service):
         """Test pathfinding with invalid request."""
@@ -89,9 +100,7 @@ class TestPathFindingService:
         """Test pathfinding when no path exists."""
         # Mock path finder to raise PathNotFoundError
         mock_path_finder = Mock()
-        mock_path_finder.find_shortest_path.side_effect = PathNotFoundError(
-            "Page A", "Page C"
-        )
+        mock_path_finder.find_path.side_effect = PathNotFoundError("Page A", "Page C")
 
         service = PathFindingService(
             mock_path_finder, mock_cache_service, mock_wikipedia_client
@@ -336,7 +345,7 @@ class TestServiceIntegration:
         """Test pathfinding after validating pages exist through explore."""
         # Setup mocks
         mock_path_finder = Mock()
-        mock_path_finder.find_shortest_path.return_value = {
+        mock_path_finder.find_path.return_value = {
             "path": ["Page A", "Page B", "Page C"],
             "nodes_explored": 10,
         }
@@ -377,3 +386,59 @@ class TestServiceIntegration:
 
         with pytest.raises(Exception, match="Wikipedia API error"):
             service.explore_page(request)
+
+
+class TestValidatePagesDisambiguation:
+    """Tests for disambiguation handling in validate_pages."""
+
+    def test_disambiguation_end_page_raises(
+        self, mock_wikipedia_client, mock_cache_service
+    ):
+        mock_wikipedia_client.get_page_with_redirect_info.side_effect = lambda page: {
+            "exists": True,
+            "final_title": page,
+            "was_redirected": False,
+            "is_disambiguation": page == "Mercury",
+        }
+        service = PathFindingService(Mock(), mock_cache_service, mock_wikipedia_client)
+        with pytest.raises(DisambiguationPageError):
+            service.validate_pages("A", "Mercury")
+
+
+class TestCacheManagementService:
+    def test_clear_pattern_success(self):
+        cache = Mock()
+        cache.clear_pattern.return_value = 5
+        svc = CacheManagementService(cache)
+        assert svc.clear_cache_pattern("wiki_*") == 5
+
+    def test_clear_pattern_exception_returns_zero(self):
+        cache = Mock()
+        cache.clear_pattern.side_effect = Exception("redis down")
+        svc = CacheManagementService(cache)
+        assert svc.clear_cache_pattern("wiki_*") == 0
+
+    def test_get_cache_stats(self):
+        svc = CacheManagementService(Mock())
+        stats = svc.get_cache_stats()
+        assert stats["status"] == "available"
+
+
+class TestWikipediaServiceCacheHit:
+    def test_get_page_info_cache_hit(self, mock_wikipedia_client, mock_cache_service):
+        cached = {"title": "Python", "page_id": 42, "last_modified": "2025"}
+        mock_cache_service.set("page_info:Python", cached)
+
+        svc = WikipediaService(mock_wikipedia_client, mock_cache_service)
+        result = svc.get_page_info("Python")
+
+        assert result is not None
+        assert result.title == "Python"
+        mock_wikipedia_client.get_page_info.assert_not_called()
+
+    def test_get_page_info_not_found_returns_none(
+        self, mock_wikipedia_client, mock_cache_service
+    ):
+        mock_wikipedia_client.get_page_info.return_value = None
+        svc = WikipediaService(mock_wikipedia_client, mock_cache_service)
+        assert svc.get_page_info("Ghost") is None

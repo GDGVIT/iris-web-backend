@@ -1,5 +1,8 @@
-import requests
+from typing import cast
 from unittest.mock import Mock
+
+import pytest
+import requests
 
 from app.external.wikipedia import WikipediaClient
 
@@ -40,7 +43,7 @@ def test_get_links_bulk_uses_cache_and_fetch(monkeypatch):
     client = WikipediaClient(cache_service=cache)
     # avoid threads and network: patch _fetch_from_wikipedia
     monkeypatch.setattr(
-        client, "_fetch_from_wikipedia", lambda titles: {"Miss": ["B", "C"]}
+        client, "_fetch_from_wikipedia", lambda titles, cb=None: {"Miss": ["B", "C"]}
     )
 
     result = client.get_links_bulk(["Hit", "Miss"])
@@ -78,7 +81,7 @@ def test_parse_batch_response_redirects_and_filtering():
 
 def test_page_exists_and_get_page_info_success_and_failure(monkeypatch):
     session = DummySession()
-    client = WikipediaClient(session=session)
+    client = WikipediaClient(session=cast(requests.Session, session))
 
     # Page exists
     session.set_response({"query": {"pages": {"1": {"title": "X"}}}})
@@ -106,18 +109,139 @@ def test_page_exists_and_get_page_info_success_and_failure(monkeypatch):
     assert client.get_page_info("T") is None
 
 
-def test_fetch_from_wikipedia_batches_and_merge(monkeypatch):
+def test_get_links_bulk_no_cache_service(monkeypatch):
+    """Without a cache service all titles go straight to _fetch_from_wikipedia."""
+    client = WikipediaClient()  # no cache_service
+    monkeypatch.setattr(
+        client,
+        "_fetch_from_wikipedia",
+        lambda titles, cb=None: {t: ["L"] for t in titles},
+    )
+    result = client.get_links_bulk(["A", "B"])
+    assert result == {"A": ["L"], "B": ["L"]}
+
+
+def test_get_links_bulk_empty_returns_empty():
     client = WikipediaClient()
-    # bypass network; ensure batching happens by stubbing _process_batch
+    assert client.get_links_bulk([]) == {}
+
+
+def test_fetch_single_page_success_and_error():
+    session = DummySession()
+    client = WikipediaClient(session=cast(requests.Session, session))
+
+    # Successful fetch — page with two article links
+    session.set_response(
+        {
+            "query": {
+                "pages": {
+                    "1": {
+                        "title": "Python",
+                        "links": [
+                            {"title": "Category:Languages"},  # filtered (has colon)
+                            {"title": "Guido van Rossum"},
+                            {
+                                "title": "List of Python topics"
+                            },  # kept (starts with "List of")
+                        ],
+                    }
+                }
+            }
+        }
+    )
+    result = client._fetch_single_page("Python")
+    assert result["Python"] == ["Guido van Rossum", "List of Python topics"]
+
+    # Request error raises WikipediaAPIError
+    from app.utils.exceptions import WikipediaAPIError
+
+    session.set_response({}, raise_exc=requests.RequestException("timeout"))
+    with pytest.raises(WikipediaAPIError):
+        client._fetch_single_page("Python")
+
+
+def test_get_page_with_redirect_info_redirected():
+    session = DummySession()
+    client = WikipediaClient(session=cast(requests.Session, session))
+
+    session.set_response(
+        {
+            "query": {
+                "redirects": [{"from": "AI", "to": "Artificial intelligence"}],
+                "pages": {
+                    "1": {
+                        "title": "Artificial intelligence",
+                        "categories": [],
+                    }
+                },
+            }
+        }
+    )
+    info = client.get_page_with_redirect_info("AI")
+    assert info is not None
+    assert info["exists"] is True
+    assert info["was_redirected"] is True
+    assert info["final_title"] == "Artificial intelligence"
+    assert info["is_disambiguation"] is False
+
+
+def test_get_page_with_redirect_info_disambiguation():
+    session = DummySession()
+    client = WikipediaClient(session=cast(requests.Session, session))
+
+    session.set_response(
+        {
+            "query": {
+                "redirects": [],
+                "pages": {
+                    "1": {
+                        "title": "Mercury",
+                        "categories": [{"title": "All disambiguation pages"}],
+                    }
+                },
+            }
+        }
+    )
+    info = client.get_page_with_redirect_info("Mercury")
+    assert info is not None
+    assert info["exists"] is True
+    assert info["is_disambiguation"] is True
+
+
+def test_get_page_with_redirect_info_missing_and_error():
+    session = DummySession()
+    client = WikipediaClient(session=cast(requests.Session, session))
+
+    # Missing page
+    session.set_response(
+        {"query": {"pages": {"1": {"title": "Ghost", "missing": True}}}}
+    )
+    info = client.get_page_with_redirect_info("Ghost")
+    assert info is not None
+    assert info["exists"] is False
+
+    # Network error returns safe default
+    session.set_response({}, raise_exc=requests.RequestException("net err"))
+    info = client.get_page_with_redirect_info("Ghost")
+    assert info is not None
+    assert info["exists"] is False
+    assert info["was_redirected"] is False
+
+
+def test_fetch_from_wikipedia_parallel_merge(monkeypatch):
+    client = WikipediaClient()
+    # Each title is fetched individually via _fetch_single_page; stub it to avoid network
     calls = []
 
-    def fake_process(batch):
-        calls.append(tuple(batch))
-        return {batch[0]: ["L1"], batch[-1]: ["L2"]}
+    def fake_fetch_single(title):
+        calls.append(title)
+        return {title: ["L1", "L2"]}
 
-    monkeypatch.setattr(client, "_process_batch", fake_process)
-    titles = [f"P{i}" for i in range(0, 75)]  # will create two batches (50,25)
+    monkeypatch.setattr(client, "_fetch_single_page", fake_fetch_single)
+    titles = [f"P{i}" for i in range(0, 75)]
     res = client._fetch_from_wikipedia(titles)
-    assert (len(calls) == 2) and (set(calls[0]) <= set(titles))
-    # merged keys exist from both batches
-    assert any(k in res for k in ("P0", "P49", "P50", "P74"))
+    # Every title should have been fetched individually
+    assert len(calls) == 75
+    assert set(calls) == set(titles)
+    # All titles present in merged result
+    assert all(t in res for t in titles)

@@ -1,25 +1,29 @@
+import time
+from collections.abc import Callable
 from functools import wraps
-from flask import request, jsonify, current_app
+from typing import Any
+
+from flask import jsonify, request
 from marshmallow import ValidationError
+
 from app.utils.exceptions import (
+    CacheConnectionError,
+    InvalidPageError,
     IrisBaseException,
     PathNotFoundError,
-    InvalidPageError,
-    WikipediaPageNotFoundError,
-    CacheConnectionError,
     TaskError,
+    WikipediaPageNotFoundError,
 )
 from app.utils.logging import get_logger
-import time
 
 logger = get_logger(__name__)
 
 
-def handle_validation_errors(f):
+def handle_validation_errors(f: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator to handle validation errors in API endpoints."""
 
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         try:
             return f(*args, **kwargs)
         except ValidationError as e:
@@ -34,11 +38,11 @@ def handle_validation_errors(f):
     return decorated_function
 
 
-def handle_application_errors(f):
+def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator to handle application-specific errors."""
 
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         try:
             return f(*args, **kwargs)
         except PathNotFoundError as e:
@@ -88,11 +92,11 @@ def handle_application_errors(f):
     return decorated_function
 
 
-def log_requests(f):
+def log_requests(f: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator to log API requests and responses."""
 
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         start_time = time.time()
 
         # Log request
@@ -123,11 +127,11 @@ def log_requests(f):
     return decorated_function
 
 
-def require_json(f):
+def require_json(f: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator to ensure request has JSON content type."""
 
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         if not request.is_json:
             error_response = {
                 "error": True,
@@ -148,9 +152,9 @@ def rate_limit(max_requests_per_hour=100):
         max_requests_per_hour: Maximum requests per hour per IP
     """
 
-    def decorator(f):
+    def decorator(f: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(f)
-        def decorated_function(*args, **kwargs):
+        def decorated_function(*args: Any, **kwargs: Any) -> Any:
             # In a real implementation, you would use Redis to track requests per IP
             # For now, just log the request and continue
             client_ip = request.remote_addr
@@ -164,11 +168,11 @@ def rate_limit(max_requests_per_hour=100):
     return decorator
 
 
-def cors_headers(f):
+def cors_headers(f: Callable[..., Any]) -> Callable[..., Any]:
     """Add CORS headers to response."""
 
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
         response = f(*args, **kwargs)
 
         # Handle tuple responses (data, status_code)
@@ -200,9 +204,9 @@ def cors_headers(f):
 def validate_request_size(max_size_mb=1):
     """Validate request size to prevent large payloads."""
 
-    def decorator(f):
+    def decorator(f: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(f)
-        def decorated_function(*args, **kwargs):
+        def decorated_function(*args: Any, **kwargs: Any) -> Any:
             if (
                 request.content_length
                 and request.content_length > max_size_mb * 1024 * 1024
@@ -238,7 +242,7 @@ def api_endpoint(
             pass
     """
 
-    def decorator(f):
+    def decorator(f: Callable[..., Any]) -> Callable[..., Any]:
         # Apply decorators in reverse order (they wrap inside-out)
         # ValidationError handler should be outer so it catches ValidationError first
         if handle_errors:

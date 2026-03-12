@@ -1,16 +1,17 @@
 import json as pyjson
 import os
+
 import pytest
-from flask import Flask, jsonify, Response, request
+from flask import Flask, jsonify
 
 from app.api import middleware as mw
 from app.utils.exceptions import (
+    CacheConnectionError,
+    InvalidPageError,
     IrisBaseException,
     PathNotFoundError,
-    InvalidPageError,
-    WikipediaPageNotFoundError,
-    CacheConnectionError,
     TaskError,
+    WikipediaPageNotFoundError,
 )
 from app.utils.logging import configure_logging
 

@@ -1,5 +1,8 @@
-from marshmallow import Schema, fields, validate, post_load
-from app.core.models import SearchRequest, ExploreRequest
+from typing import Any
+
+from marshmallow import Schema, fields, post_load, validate
+
+from app.core.models import ExploreRequest, SearchRequest
 
 
 class SearchRequestSchema(Schema):
@@ -104,7 +107,7 @@ class HealthCheckSchema(Schema):
     details = fields.Dict(allow_none=True)
 
 
-def validate_request_data(schema_class, data):
+def validate_request_data(schema_class: type[Schema], data: Any) -> Any:
     """
     Validate request data using the specified schema.
 
@@ -122,7 +125,7 @@ def validate_request_data(schema_class, data):
     return schema.load(data)  # Let the original ValidationError bubble up
 
 
-def serialize_response(schema_class, data):
+def serialize_response(schema_class: type[Schema], data: Any) -> Any:
     """
     Serialize response data using the specified schema.
 

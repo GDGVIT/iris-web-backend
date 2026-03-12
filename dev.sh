@@ -1,57 +1,56 @@
 #!/bin/bash
+#
+# dev.sh — Local development startup script
+#
+# Starts Redis (if not already running), a Celery worker, and the Flask
+# development server in a single terminal. Press Ctrl+C to stop everything.
+#
+# Usage:
+#   ./dev.sh
+#
+# Requires: redis-server, Python venv activated with requirements installed.
+# Server runs at http://localhost:9020
 
-# Development startup script for Iris Web Backend
-# Simple one-command startup for local development
+echo "Starting Iris (development)"
 
-echo "🚀 Starting Iris Web Backend (Development Mode)"
-
-# Set development environment
 export FLASK_ENV=development
 export SECRET_KEY=${SECRET_KEY:-"dev-secret-key-not-secure"}
 export REDIS_URL=${REDIS_URL:-"redis://localhost:6379"}
 
-# Check if Redis is running
 if ! redis-cli ping > /dev/null 2>&1; then
-    echo "❌ Redis is not running. Starting Redis..."
+    echo "Redis not running — starting..."
     redis-server --daemonize yes
     sleep 1
     if ! redis-cli ping > /dev/null 2>&1; then
-        echo "❌ Failed to start Redis. Please start it manually: redis-server"
+        echo "Failed to start Redis. Run: redis-server"
         exit 1
     fi
 fi
 
-echo "✅ Redis is running"
+echo "Redis OK"
 
-# Function to cleanup on exit
 cleanup() {
     echo ""
-    echo "🔄 Stopping services..."
+    echo "Stopping..."
     kill $CELERY_PID $WEB_PID 2>/dev/null || true
     wait $CELERY_PID $WEB_PID 2>/dev/null || true
-    echo "✅ Development server stopped"
     exit 0
 }
 
 trap cleanup SIGINT SIGTERM
 
-echo "🔄 Starting Celery worker..."
 celery -A celery_worker.celery worker --loglevel=info --queues=celery,pathfinding,health,maintenance &
 CELERY_PID=$!
 
 sleep 2
 
-echo "🔄 Starting Flask development server..."
 python run.py &
 WEB_PID=$!
 
-sleep 2
+sleep 1
 
-echo ""
-echo "🎉 Development server is running!"
-echo "   📡 Server: http://localhost:9020"
-echo "   👷 Celery: Running"
-echo ""
+echo "Server:  http://localhost:9020"
+echo "Swagger: http://localhost:9020/api/docs"
 echo "Press Ctrl+C to stop"
 
 wait $CELERY_PID $WEB_PID

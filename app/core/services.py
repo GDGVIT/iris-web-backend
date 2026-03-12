@@ -1,23 +1,24 @@
 import time
-from typing import List, Optional
+
+import networkx as nx
+
 from app.core.interfaces import (
+    CacheServiceInterface,
     PathFinderInterface,
     WikipediaClientInterface,
-    CacheServiceInterface,
 )
 from app.core.models import (
-    PathResult,
-    ExploreResult,
-    SearchRequest,
     ExploreRequest,
+    ExploreResult,
+    PathResult,
+    SearchRequest,
     WikipediaPage,
 )
 from app.utils.exceptions import (
-    InvalidPageError,
     DisambiguationPageError,
+    InvalidPageError,
 )
 from app.utils.logging import get_logger
-import networkx as nx
 
 logger = get_logger(__name__)
 
@@ -37,13 +38,13 @@ class PathFindingService:
 
     def find_path(self, request: SearchRequest) -> PathResult:
         """
-        Find the shortest path between two Wikipedia pages.
+        Find a path between two Wikipedia pages using BFS.
 
         Args:
             request: Search request with start and end pages
 
         Returns:
-            PathResult with the shortest path and metadata
+            PathResult with the path and metadata
 
         Raises:
             InvalidPageError: When request is invalid or pages don't exist
@@ -64,7 +65,7 @@ class PathFindingService:
         # Perform pathfinding
         start_time = time.time()
         try:
-            path_result = self.path_finder.find_shortest_path(
+            path_result = self.path_finder.find_path(
                 request.start_page, request.end_page
             )
             search_time = time.time() - start_time
@@ -113,8 +114,18 @@ class PathFindingService:
             DisambiguationPageError: When end page is a disambiguation page
         """
         # Get detailed info for both pages
-        start_info = self.wikipedia_client.get_page_with_redirect_info(start_page)
-        end_info = self.wikipedia_client.get_page_with_redirect_info(end_page)
+        _default = {
+            "exists": False,
+            "final_title": None,
+            "was_redirected": False,
+            "is_disambiguation": False,
+        }
+        start_info = (
+            self.wikipedia_client.get_page_with_redirect_info(start_page) or _default
+        )
+        end_info = (
+            self.wikipedia_client.get_page_with_redirect_info(end_page) or _default
+        )
 
         start_exists = start_info.get("exists", False)
         end_exists = end_info.get("exists", False)
@@ -221,7 +232,7 @@ class ExploreService:
             raise
 
     def _generate_explore_graph(
-        self, start_page: str, links: List[str], total_links: int
+        self, start_page: str, links: list[str], total_links: int
     ) -> ExploreResult:
         """Generate graph data for visualization."""
         # Create graph
@@ -253,7 +264,7 @@ class WikipediaService:
         self.wikipedia_client = wikipedia_client
         self.cache_service = cache_service
 
-    def get_page_info(self, page_title: str) -> Optional[WikipediaPage]:
+    def get_page_info(self, page_title: str) -> WikipediaPage | None:
         """Get information about a Wikipedia page."""
         if not page_title or not page_title.strip():
             raise InvalidPageError("Page title cannot be empty")
@@ -270,7 +281,7 @@ class WikipediaService:
             return None
 
         page = WikipediaPage(
-            title=page_info.get("title"),
+            title=page_info.get("title") or page_title,
             page_id=page_info.get("page_id"),
             last_modified=page_info.get("last_modified"),
         )
@@ -280,7 +291,7 @@ class WikipediaService:
 
         return page
 
-    def search_pages(self, query: str, limit: int = 10) -> List[str]:
+    def search_pages(self, query: str, limit: int = 10) -> list[str]:
         """Search for Wikipedia pages by title."""
         # This would implement Wikipedia search API
         # For now, return empty list as it's not in the original scope
@@ -296,11 +307,7 @@ class CacheManagementService:
     def clear_cache_pattern(self, pattern: str) -> int:
         """Clear all cache entries matching a pattern."""
         try:
-            if hasattr(self.cache_service, "clear_pattern"):
-                return self.cache_service.clear_pattern(pattern)
-            else:
-                logger.warning("Cache service doesn't support pattern clearing")
-                return 0
+            return self.cache_service.clear_pattern(pattern)
         except Exception as e:
             logger.error(f"Failed to clear cache pattern {pattern}: {e}")
             return 0
