@@ -1,11 +1,10 @@
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
-from app.core.models import ExploreRequest, ExploreResult, PathResult, SearchRequest
+from app.core.models import PathResult, SearchRequest
 from app.core.services import (
     CacheManagementService,
-    ExploreService,
     PathFindingService,
     WikipediaService,
 )
@@ -19,27 +18,16 @@ from app.utils.exceptions import (
 class TestPathFindingService:
     """Integration tests for PathFindingService."""
 
-    def test_find_path_success(self, mock_wikipedia_client, mock_cache_service):
-        """Test successful pathfinding."""
-        # Mock path finder
-        mock_path_finder = Mock()
-        mock_path_finder.find_path.return_value = {
-            "path": ["Page A", "Page B", "Page C"],
-            "nodes_explored": 10,
-        }
-
-        # Create service
+    def test_find_path_success(
+        self, mock_wikipedia_client, mock_cache_service, mock_path_finder
+    ):
         service = PathFindingService(
             mock_path_finder, mock_cache_service, mock_wikipedia_client
         )
-
-        # Create request
         request = SearchRequest(start_page="Page A", end_page="Page C")
 
-        # Execute
         result = service.find_path(request)
 
-        # Assert
         assert isinstance(result, PathResult)
         assert result.path == ["Page A", "Page B", "Page C"]
         assert result.length == 3
@@ -47,9 +35,10 @@ class TestPathFindingService:
         assert result.end_page == "Page C"
         assert result.search_time is not None
 
-    def test_find_path_cached_result(self, mock_wikipedia_client, mock_cache_service):
-        """Test pathfinding with cached result."""
-        # Mock cached result
+    def test_find_path_cached_result(
+        self, mock_wikipedia_client, mock_cache_service, mock_path_finder
+    ):
+        """When a cached result exists, the path finder is not invoked."""
         cached_data = {
             "path": ["Page A", "Page B", "Page C"],
             "length": 3,
@@ -58,84 +47,78 @@ class TestPathFindingService:
             "search_time": 1.5,
             "nodes_explored": 10,
         }
-        # Set the cache key that will be used
         cache_key = "path:Page A:Page C"
         mock_cache_service.get.side_effect = lambda key: (
             cached_data if key == cache_key else None
         )
 
-        # Mock path finder (should not be called)
-        mock_path_finder = Mock()
-
-        # Create service
         service = PathFindingService(
             mock_path_finder, mock_cache_service, mock_wikipedia_client
         )
+        result = service.find_path(
+            SearchRequest(start_page="Page A", end_page="Page C")
+        )
 
-        # Create request
-        request = SearchRequest(start_page="Page A", end_page="Page C")
-
-        # Execute
-        result = service.find_path(request)
-
-        # Assert
         assert isinstance(result, PathResult)
         assert result.path == cached_data["path"]
         mock_path_finder.find_path.assert_not_called()
 
-    def test_find_path_invalid_request(self, mock_wikipedia_client, mock_cache_service):
-        """Test pathfinding with invalid request."""
-        mock_path_finder = Mock()
+    def test_find_path_result_is_cached(
+        self, mock_wikipedia_client, mock_cache_service, mock_path_finder
+    ):
+        """A successful find_path result is written to the cache."""
         service = PathFindingService(
             mock_path_finder, mock_cache_service, mock_wikipedia_client
         )
+        service.find_path(SearchRequest(start_page="Page A", end_page="Page C"))
 
-        # Invalid request (empty start page)
+        mock_cache_service.set.assert_called_once()
+        call_key = mock_cache_service.set.call_args[0][0]
+        assert call_key == "path:Page A:Page C"
+
+    def test_find_path_invalid_request(
+        self, mock_wikipedia_client, mock_cache_service, mock_path_finder
+    ):
+        """Invalid SearchRequest raises InvalidPageError before path_finder is called."""
+        service = PathFindingService(
+            mock_path_finder, mock_cache_service, mock_wikipedia_client
+        )
         request = SearchRequest(start_page="", end_page="Page C")
 
         with pytest.raises(InvalidPageError):
             service.find_path(request)
 
-    def test_find_path_not_found(self, mock_wikipedia_client, mock_cache_service):
-        """Test pathfinding when no path exists."""
-        # Mock path finder to raise PathNotFoundError
-        mock_path_finder = Mock()
-        mock_path_finder.find_path.side_effect = PathNotFoundError("Page A", "Page C")
+        mock_path_finder.find_path.assert_not_called()
 
+    def test_find_path_not_found(
+        self, mock_wikipedia_client, mock_cache_service, mock_path_finder
+    ):
+        """PathNotFoundError from the path finder propagates unchanged."""
+        mock_path_finder.find_path.side_effect = PathNotFoundError("Page A", "Page C")
         service = PathFindingService(
             mock_path_finder, mock_cache_service, mock_wikipedia_client
         )
 
-        request = SearchRequest(start_page="Page A", end_page="Page C")
-
         with pytest.raises(PathNotFoundError):
-            service.find_path(request)
+            service.find_path(SearchRequest(start_page="Page A", end_page="Page C"))
 
-    def test_validate_pages(self, mock_wikipedia_client, mock_cache_service):
-        """Test page validation."""
+    def test_validate_pages(
+        self, mock_wikipedia_client, mock_cache_service, mock_path_finder
+    ):
+        """Both pages existing → (True, True, details); missing end → (True, False, ...)."""
 
-        # Mock Wikipedia client responses
         def mock_get_page_info(page):
-            if page == "NonExistent":
-                return {
-                    "exists": False,
-                    "final_title": page,
-                    "was_redirected": False,
-                    "is_disambiguation": False,
-                }
-            else:
-                return {
-                    "exists": True,
-                    "final_title": page,
-                    "was_redirected": False,
-                    "is_disambiguation": False,
-                }
+            return {
+                "exists": page != "NonExistent",
+                "final_title": page,
+                "was_redirected": False,
+                "is_disambiguation": False,
+            }
 
         mock_wikipedia_client.get_page_with_redirect_info.side_effect = (
             mock_get_page_info
         )
 
-        mock_path_finder = Mock()
         service = PathFindingService(
             mock_path_finder, mock_cache_service, mock_wikipedia_client
         )
@@ -157,103 +140,6 @@ class TestPathFindingService:
         assert end_exists is False
         assert validation_details["start_page"]["exists"] is True
         assert validation_details["end_page"]["exists"] is False
-
-
-class TestExploreService:
-    """Integration tests for ExploreService."""
-
-    def test_explore_page_success(self, mock_wikipedia_client, mock_cache_service):
-        """Test successful page exploration."""
-        # Mock Wikipedia client
-        mock_wikipedia_client.page_exists.return_value = True
-        mock_wikipedia_client.get_links_bulk.return_value = {
-            "Test Page": ["Link 1", "Link 2", "Link 3", "Link 4", "Link 5"]
-        }
-
-        # Create service
-        service = ExploreService(mock_wikipedia_client, mock_cache_service)
-
-        # Create request
-        request = ExploreRequest(start_page="Test Page", max_links=3)
-
-        # Execute
-        result = service.explore_page(request)
-
-        # Assert
-        assert isinstance(result, ExploreResult)
-        assert result.start_page == "Test Page"
-        assert len(result.nodes) == 4  # Start page + 3 links
-        assert len(result.edges) == 3  # 3 connections
-        assert result.total_links == 5  # Total available links
-
-    def test_explore_page_cached_result(
-        self, mock_wikipedia_client, mock_cache_service
-    ):
-        """Test page exploration with cached result."""
-        # Mock cached result
-        cached_data = {
-            "start_page": "Test Page",
-            "nodes": ["Test Page", "Link 1", "Link 2"],
-            "edges": [("Test Page", "Link 1"), ("Test Page", "Link 2")],
-            "total_links": 2,
-        }
-        # The cache key includes max_links (which defaults to None now)
-        cache_key = "explore:Test Page:None"
-        mock_cache_service.get.side_effect = lambda key: (
-            cached_data if key == cache_key else None
-        )
-
-        # Create service
-        service = ExploreService(mock_wikipedia_client, mock_cache_service)
-
-        # Create request
-        request = ExploreRequest(start_page="Test Page")
-
-        # Execute
-        result = service.explore_page(request)
-
-        # Assert
-        assert isinstance(result, ExploreResult)
-        assert result.start_page == cached_data["start_page"]
-        mock_wikipedia_client.get_links_bulk.assert_not_called()
-
-    def test_explore_page_not_found(self, mock_wikipedia_client, mock_cache_service):
-        """Test exploration of non-existent page."""
-        # Mock page doesn't exist
-        mock_wikipedia_client.page_exists.return_value = False
-
-        service = ExploreService(mock_wikipedia_client, mock_cache_service)
-        request = ExploreRequest(start_page="NonExistent")
-
-        with pytest.raises(InvalidPageError):
-            service.explore_page(request)
-
-    def test_explore_page_no_links(self, mock_wikipedia_client, mock_cache_service):
-        """Test exploration of page with no links."""
-        # Mock page exists but has no links
-        mock_wikipedia_client.page_exists.return_value = True
-        mock_wikipedia_client.get_links_bulk.return_value = {"Test Page": []}
-
-        service = ExploreService(mock_wikipedia_client, mock_cache_service)
-        request = ExploreRequest(start_page="Test Page")
-
-        result = service.explore_page(request)
-
-        assert isinstance(result, ExploreResult)
-        assert result.start_page == "Test Page"
-        assert result.nodes == ["Test Page"]
-        assert result.edges == []
-        assert result.total_links == 0
-
-    def test_explore_invalid_request(self, mock_wikipedia_client, mock_cache_service):
-        """Test exploration with invalid request."""
-        service = ExploreService(mock_wikipedia_client, mock_cache_service)
-
-        # Invalid request (empty start page)
-        request = ExploreRequest(start_page="")
-
-        with pytest.raises(InvalidPageError):
-            service.explore_page(request)
 
 
 class TestWikipediaService:
@@ -322,77 +208,12 @@ class TestWikipediaService:
         with pytest.raises(InvalidPageError):
             service.get_page_info("")  # Empty title
 
-    def test_search_pages(self, mock_wikipedia_client, mock_cache_service):
-        """Test page search functionality."""
-        service = WikipediaService(mock_wikipedia_client, mock_cache_service)
-
-        # Current implementation returns empty list
-        result = service.search_pages("python programming")
-        assert result == []
-
-
-class TestServiceIntegration:
-    """Integration tests combining multiple services."""
-
-    @patch("app.core.factory.ServiceFactory")
-    def test_pathfinding_with_explore_validation(
-        self,
-        mock_factory,
-        mock_wikipedia_client,
-        mock_cache_service,
-        mock_queue_service,
-    ):
-        """Test pathfinding after validating pages exist through explore."""
-        # Setup mocks
-        mock_path_finder = Mock()
-        mock_path_finder.find_path.return_value = {
-            "path": ["Page A", "Page B", "Page C"],
-            "nodes_explored": 10,
-        }
-
-        # Mock page exists and has links
-        mock_wikipedia_client.page_exists.return_value = True
-        mock_wikipedia_client.get_links_bulk.return_value = {
-            "Page A": ["Page B", "Page C"]
-        }
-
-        # Create services
-        path_service = PathFindingService(
-            mock_path_finder, mock_cache_service, mock_wikipedia_client
-        )
-        explore_service = ExploreService(mock_wikipedia_client, mock_cache_service)
-
-        # First, explore the starting page to validate it exists
-        explore_request = ExploreRequest(start_page="Page A", max_links=5)
-        explore_result = explore_service.explore_page(explore_request)
-
-        assert explore_result.start_page == "Page A"
-        assert len(explore_result.nodes) > 1  # Has links
-
-        # Then find path
-        search_request = SearchRequest(start_page="Page A", end_page="Page C")
-        path_result = path_service.find_path(search_request)
-
-        assert path_result.path == ["Page A", "Page B", "Page C"]
-        assert path_result.length == 3
-
-    def test_service_error_propagation(self, mock_wikipedia_client, mock_cache_service):
-        """Test that service errors are properly propagated."""
-        # Mock Wikipedia client to raise exception
-        mock_wikipedia_client.page_exists.side_effect = Exception("Wikipedia API error")
-
-        service = ExploreService(mock_wikipedia_client, mock_cache_service)
-        request = ExploreRequest(start_page="Test Page")
-
-        with pytest.raises(Exception, match="Wikipedia API error"):
-            service.explore_page(request)
-
 
 class TestValidatePagesDisambiguation:
     """Tests for disambiguation handling in validate_pages."""
 
     def test_disambiguation_end_page_raises(
-        self, mock_wikipedia_client, mock_cache_service
+        self, mock_wikipedia_client, mock_cache_service, mock_path_finder
     ):
         mock_wikipedia_client.get_page_with_redirect_info.side_effect = lambda page: {
             "exists": True,
@@ -400,9 +221,45 @@ class TestValidatePagesDisambiguation:
             "was_redirected": False,
             "is_disambiguation": page == "Mercury",
         }
-        service = PathFindingService(Mock(), mock_cache_service, mock_wikipedia_client)
+        service = PathFindingService(
+            mock_path_finder, mock_cache_service, mock_wikipedia_client
+        )
         with pytest.raises(DisambiguationPageError):
             service.validate_pages("A", "Mercury")
+
+    def test_disambiguation_start_page_is_allowed(
+        self, mock_wikipedia_client, mock_cache_service, mock_path_finder
+    ):
+        """Disambiguation start pages do not raise — the user navigates from them."""
+        mock_wikipedia_client.get_page_with_redirect_info.side_effect = lambda page: {
+            "exists": True,
+            "final_title": page,
+            "was_redirected": False,
+            "is_disambiguation": page == "Mercury",
+        }
+        service = PathFindingService(
+            mock_path_finder, mock_cache_service, mock_wikipedia_client
+        )
+        start_exists, end_exists, details = service.validate_pages("Mercury", "Target")
+        assert start_exists is True
+        assert end_exists is True
+        assert details["start_page"]["is_disambiguation"] is True
+
+    def test_validate_returns_redirect_info(
+        self, mock_wikipedia_client, mock_cache_service, mock_path_finder
+    ):
+        """Redirect metadata is surfaced in validation_details."""
+        mock_wikipedia_client.get_page_with_redirect_info.side_effect = lambda page: {
+            "exists": True,
+            "final_title": "AI" if page == "Artificial intelligence" else page,
+            "was_redirected": page == "Artificial intelligence",
+            "is_disambiguation": False,
+        }
+        service = PathFindingService(
+            mock_path_finder, mock_cache_service, mock_wikipedia_client
+        )
+        _, _, details = service.validate_pages("Artificial intelligence", "Python")
+        assert details["start_page"]["was_redirected"] is True
 
 
 class TestCacheManagementService:

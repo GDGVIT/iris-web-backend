@@ -131,20 +131,6 @@ class TaskError(IrisBaseException):
         super().__init__(message, "TASK_ERROR")
 
 
-class TaskTimeoutError(TaskError):
-    """Raised when a task times out."""
-
-    def __init__(self, task_id: str | None = None, timeout: int | None = None):
-        message = "Task timed out"
-        if task_id:
-            message = f"Task {task_id} timed out"
-        if timeout:
-            message += f" after {timeout} seconds"
-        super().__init__(message, task_id)
-        self.timeout = timeout
-        self.code = "TASK_TIMEOUT"
-
-
 class ConfigurationError(IrisBaseException):
     """Raised when configuration is invalid or missing."""
 

@@ -22,6 +22,11 @@ class CacheServiceInterface(ABC):
         pass
 
     @abstractmethod
+    def delete_many(self, keys: list[str]) -> None:
+        """Delete multiple keys atomically."""
+        pass
+
+    @abstractmethod
     def exists(self, key: str) -> bool:
         """Check if key exists in cache."""
         pass
@@ -29,6 +34,50 @@ class CacheServiceInterface(ABC):
     @abstractmethod
     def clear_pattern(self, pattern: str) -> int:
         """Clear all keys matching a pattern. Returns count of deleted keys."""
+        pass
+
+    @abstractmethod
+    def ping(self) -> bool:
+        """Check connectivity. Returns True if reachable."""
+        pass
+
+    # --- Set operations ---
+
+    @abstractmethod
+    def set_add(self, key: str, value: str) -> None:
+        """Add a value to a set."""
+        pass
+
+    @abstractmethod
+    def set_add_many(self, key: str, values: list[str]) -> None:
+        """Add multiple values to a set in a single round-trip."""
+        pass
+
+    @abstractmethod
+    def set_contains(self, key: str, value: str) -> bool:
+        """Return True if value is a member of the set."""
+        pass
+
+    @abstractmethod
+    def set_contains_many(self, key: str, values: list[str]) -> list[bool]:
+        """Return membership booleans for each value in a single round-trip."""
+        pass
+
+    # --- Hash operations ---
+
+    @abstractmethod
+    def hash_set(self, key: str, field: str, value: str) -> None:
+        """Set a field in a hash."""
+        pass
+
+    @abstractmethod
+    def hash_set_many(self, key: str, mapping: dict[str, str]) -> None:
+        """Set multiple fields in a hash in a single round-trip."""
+        pass
+
+    @abstractmethod
+    def hash_get(self, key: str, field: str) -> str | None:
+        """Get a field from a hash. Returns None if missing."""
         pass
 
 
@@ -48,6 +97,22 @@ class WikipediaClientInterface(ABC):
             on_page_fetched: Optional callback fired as soon as each page's
                 links are available (cache hit or network response).  May be
                 called from worker threads — must be thread-safe.
+        """
+        pass
+
+    @abstractmethod
+    def get_backlinks_bulk(
+        self,
+        page_titles: list[str],
+        on_page_fetched: Callable[[str, list[str]], None] | None = None,
+    ) -> dict[str, list[str]]:
+        """Get backlinks (pages that link TO) for multiple pages in bulk.
+
+        Args:
+            page_titles: Pages to fetch backlinks for.
+            on_page_fetched: Optional callback fired as soon as each page's
+                backlinks are available.  May be called from worker threads —
+                must be thread-safe.
         """
         pass
 

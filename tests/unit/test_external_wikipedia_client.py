@@ -10,7 +10,8 @@ from app.external.wikipedia import WikipediaClient
 class DummyResponse:
     def __init__(self, payload, status=200, raise_exc=None):
         self._payload = payload
-        self._status = status
+        self.status_code = status
+        self.headers: dict = {}
         self._raise = raise_exc
 
     def raise_for_status(self):
@@ -26,12 +27,16 @@ class DummySession:
         self.headers = {}
         self.calls = []
         self._response = DummyResponse({"query": {}})
+        self._raise_exc = None
 
     def set_response(self, payload, raise_exc=None):
-        self._response = DummyResponse(payload, raise_exc=raise_exc)
+        self._raise_exc = raise_exc
+        self._response = DummyResponse(payload)
 
     def get(self, url, params=None, timeout=None):
         self.calls.append((url, params, timeout))
+        if self._raise_exc:
+            raise self._raise_exc
         return self._response
 
 
@@ -41,10 +46,12 @@ def test_get_links_bulk_uses_cache_and_fetch(monkeypatch):
     cache.get.side_effect = lambda k: ["A"] if k == "wiki_links:Hit" else None
 
     client = WikipediaClient(cache_service=cache)
-    # avoid threads and network: patch _fetch_from_wikipedia
-    monkeypatch.setattr(
-        client, "_fetch_from_wikipedia", lambda titles, cb=None: {"Miss": ["B", "C"]}
-    )
+    # avoid threads and network: patch _fetch_single_page so _bulk_fetch can use it
+
+    def fake_fetch(title, **kwargs):
+        return {title: ["B", "C"] if title == "Miss" else []}
+
+    monkeypatch.setattr(client, "_fetch_single_page", fake_fetch)
 
     result = client.get_links_bulk(["Hit", "Miss"])
     assert result == {"Hit": ["A"], "Miss": ["B", "C"]}
@@ -110,12 +117,12 @@ def test_page_exists_and_get_page_info_success_and_failure(monkeypatch):
 
 
 def test_get_links_bulk_no_cache_service(monkeypatch):
-    """Without a cache service all titles go straight to _fetch_from_wikipedia."""
+    """Without a cache service all titles go straight through _bulk_fetch -> _fetch_single_page."""
     client = WikipediaClient()  # no cache_service
     monkeypatch.setattr(
         client,
-        "_fetch_from_wikipedia",
-        lambda titles, cb=None: {t: ["L"] for t in titles},
+        "_fetch_single_page",
+        lambda title, **kwargs: {title: ["L"]},
     )
     result = client.get_links_bulk(["A", "B"])
     assert result == {"A": ["L"], "B": ["L"]}
@@ -127,8 +134,13 @@ def test_get_links_bulk_empty_returns_empty():
 
 
 def test_fetch_single_page_success_and_error():
+    """_fetch_single_page fetches links and raises WikipediaAPIError on network failure."""
     session = DummySession()
-    client = WikipediaClient(session=cast(requests.Session, session))
+    # max_retries=1 and request_delay=0.0 keep the test instant: no backoff sleep,
+    # no rate-limiter sleep.
+    client = WikipediaClient(
+        session=cast(requests.Session, session), max_retries=1, request_delay=0.0
+    )
 
     # Successful fetch — page with two article links
     session.set_response(
@@ -228,18 +240,19 @@ def test_get_page_with_redirect_info_missing_and_error():
     assert info["was_redirected"] is False
 
 
-def test_fetch_from_wikipedia_parallel_merge(monkeypatch):
+def test_bulk_fetch_parallel_merge(monkeypatch):
+    """_bulk_fetch dispatches each title to the fetch_fn in parallel and merges results."""
     client = WikipediaClient()
-    # Each title is fetched individually via _fetch_single_page; stub it to avoid network
+    # Stub _fetch_single_page to avoid network
     calls = []
 
-    def fake_fetch_single(title):
+    def fake_fetch_single(title, **kwargs):
         calls.append(title)
         return {title: ["L1", "L2"]}
 
     monkeypatch.setattr(client, "_fetch_single_page", fake_fetch_single)
     titles = [f"P{i}" for i in range(0, 75)]
-    res = client._fetch_from_wikipedia(titles)
+    res = client.get_links_bulk(titles)
     # Every title should have been fetched individually
     assert len(calls) == 75
     assert set(calls) == set(titles)

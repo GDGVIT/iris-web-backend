@@ -1,11 +1,8 @@
 from app.core.models import (
     CacheStats,
-    ExploreRequest,
-    ExploreResult,
     HealthStatus,
     PathResult,
     SearchRequest,
-    TaskInfo,
     TaskStatus,
     WikipediaPage,
 )
@@ -78,58 +75,6 @@ class TestPathResult:
         assert result.is_valid is False
 
 
-class TestExploreResult:
-    """Unit tests for ExploreResult model."""
-
-    def test_valid_explore_result(self):
-        """Test creating a valid ExploreResult."""
-        result = ExploreResult(
-            start_page="Test Page",
-            nodes=["Test Page", "Link 1", "Link 2"],
-            edges=[("Test Page", "Link 1"), ("Test Page", "Link 2")],
-            total_links=2,
-        )
-
-        assert result.start_page == "Test Page"
-        assert result.nodes == ["Test Page", "Link 1", "Link 2"]
-        assert result.edges == [("Test Page", "Link 1"), ("Test Page", "Link 2")]
-        assert result.total_links == 2
-        assert result.is_valid is True
-
-    def test_invalid_explore_result_start_not_in_nodes(self):
-        """Test ExploreResult where start page is not in nodes."""
-        result = ExploreResult(
-            start_page="Test Page",
-            nodes=["Link 1", "Link 2"],  # Start page not included
-            edges=[("Test Page", "Link 1"), ("Test Page", "Link 2")],
-            total_links=2,
-        )
-
-        assert result.is_valid is False
-
-    def test_invalid_explore_result_empty_nodes(self):
-        """Test ExploreResult with empty nodes."""
-        result = ExploreResult(
-            start_page="Test Page",
-            nodes=[],
-            edges=[],
-            total_links=0,  # Empty nodes
-        )
-
-        assert result.is_valid is False
-
-    def test_invalid_explore_result_negative_total_links(self):
-        """Test ExploreResult with negative total links."""
-        result = ExploreResult(
-            start_page="Test Page",
-            nodes=["Test Page"],
-            edges=[],
-            total_links=-1,  # Negative total links
-        )
-
-        assert result.is_valid is False
-
-
 class TestSearchRequest:
     """Unit tests for SearchRequest model."""
 
@@ -180,38 +125,6 @@ class TestSearchRequest:
         assert request.validate() is False
 
 
-class TestExploreRequest:
-    """Unit tests for ExploreRequest model."""
-
-    def test_valid_explore_request(self):
-        """Test creating a valid ExploreRequest."""
-        request = ExploreRequest(start_page="Test Page", max_links=15)
-
-        assert request.start_page == "Test Page"
-        assert request.max_links == 15
-        assert request.validate() is True
-
-    def test_explore_request_minimal(self):
-        """Test ExploreRequest with minimal required fields."""
-        request = ExploreRequest(start_page="Test Page")
-
-        assert request.start_page == "Test Page"
-        assert request.max_links is None
-        assert request.validate() is True
-
-    def test_invalid_explore_request_empty_start(self):
-        """Test ExploreRequest with empty start page."""
-        request = ExploreRequest(start_page="")
-
-        assert request.validate() is False
-
-    def test_invalid_explore_request_whitespace_only(self):
-        """Test ExploreRequest with whitespace-only start page."""
-        request = ExploreRequest(start_page="   ")
-
-        assert request.validate() is False
-
-
 class TestWikipediaPage:
     """Unit tests for WikipediaPage model."""
 
@@ -251,37 +164,6 @@ class TestWikipediaPage:
         page = WikipediaPage(title="   ")
 
         assert page.is_valid is False
-
-
-class TestTaskInfo:
-    """Unit tests for TaskInfo model."""
-
-    def test_task_info_creation(self):
-        """Test creating a TaskInfo."""
-        task_info = TaskInfo(
-            task_id="test-task-123",
-            status=TaskStatus.IN_PROGRESS,
-            result={"path": ["A", "B"]},
-            error=None,
-            progress={"current": 50, "total": 100},
-            created_at="2025-01-01T00:00:00Z",
-            updated_at="2025-01-01T00:01:00Z",
-        )
-
-        assert task_info.task_id == "test-task-123"
-        assert task_info.status == TaskStatus.IN_PROGRESS
-        assert task_info.result == {"path": ["A", "B"]}
-        assert task_info.error is None
-        assert task_info.progress == {"current": 50, "total": 100}
-
-    def test_task_info_minimal(self):
-        """Test TaskInfo with minimal required fields."""
-        task_info = TaskInfo(task_id="test-task-123", status=TaskStatus.PENDING)
-
-        assert task_info.task_id == "test-task-123"
-        assert task_info.status == TaskStatus.PENDING
-        assert task_info.result is None
-        assert task_info.error is None
 
 
 class TestTaskStatus:

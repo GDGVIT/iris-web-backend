@@ -10,7 +10,6 @@ from app.utils.exceptions import (
     PathFindingError,
     PathNotFoundError,
     TaskError,
-    TaskTimeoutError,
     WikipediaAPIError,
     WikipediaError,
     WikipediaPageNotFoundError,
@@ -164,27 +163,6 @@ class TestTaskError:
     def test_with_explicit_message(self):
         exc = TaskError("boom")
         assert exc.message == "boom"
-
-
-class TestTaskTimeoutError:
-    def test_default(self):
-        exc = TaskTimeoutError()
-        assert "timed out" in exc.message
-        assert exc.code == "TASK_TIMEOUT"
-        assert exc.timeout is None
-
-    def test_with_task_id(self):
-        exc = TaskTimeoutError(task_id="t1")
-        assert "t1" in exc.message
-
-    def test_with_timeout(self):
-        exc = TaskTimeoutError(timeout=300)
-        assert "300" in exc.message
-
-    def test_with_both(self):
-        exc = TaskTimeoutError(task_id="t1", timeout=60)
-        assert "t1" in exc.message
-        assert "60" in exc.message
 
 
 class TestConfigurationError:

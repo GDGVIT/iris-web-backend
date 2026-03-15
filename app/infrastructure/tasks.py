@@ -20,10 +20,10 @@ logger = get_logger(__name__)
     bind=True,
     autoretry_for=(requests.RequestException, CacheConnectionError, WikipediaAPIError),
     retry_kwargs={"max_retries": 3, "countdown": 60},
-    soft_time_limit=300,  # 5 minutes
-    time_limit=600,  # 10 minutes
 )
-def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs"):
+def find_path_task(
+    self, start_page: str, end_page: str, algorithm: str = "bidirectional"
+):
     """
     Celery task for finding a path between Wikipedia pages.
 
@@ -79,12 +79,24 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
             },
         )
 
-        # Create progress callback for real-time updates
+        # Create progress callback for real-time updates.
+        # The pathfinder supplies whatever fields it knows; we enrich with
+        # task-level context (start_page, end_page, max_depth) here.
+        from flask import current_app
+
+        max_depth = current_app.config.get("MAX_SEARCH_DEPTH", 6)
+
         def progress_update(progress_data):
-            # Add start/end pages to progress data
-            progress_data["search_stats"]["start_page"] = start_page
-            progress_data["search_stats"]["end_page"] = end_page
-            progress_data["search_stats"]["max_depth"] = 6  # From config
+            # Normalise: pathfinders may emit a flat dict or one with search_stats
+            if "search_stats" not in progress_data:
+                progress_data = {
+                    "status": "Searching...",
+                    "search_stats": progress_data,
+                    "search_time_elapsed": progress_data.get("search_time_elapsed", 0),
+                }
+            progress_data["search_stats"].setdefault("start_page", start_page)
+            progress_data["search_stats"].setdefault("end_page", end_page)
+            progress_data["search_stats"].setdefault("max_depth", max_depth)
 
             self.update_state(state="PROGRESS", meta=progress_data)
 
@@ -134,7 +146,7 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
                     "queue_size": 1,
                     "start_page": start_page,
                     "end_page": end_page,
-                    "max_depth": 6,
+                    "max_depth": max_depth,
                 },
                 "search_time_elapsed": 0,
             },
@@ -158,7 +170,7 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
                 "final_depth": result.length - 1 if result.path else 0,
                 "start_page": result.start_page,
                 "end_page": result.end_page,
-                "max_depth": 6,  # From config
+                "max_depth": max_depth,
                 "search_completed": True,
             },
         }
@@ -254,12 +266,10 @@ def health_check_task(self):
         # Perform basic health checks
         from app.core.factory import ServiceFactory
 
-        # Test Redis connection
-        redis_client = ServiceFactory.get_redis_client()
-        redis_client.ping()
-
-        # Test cache service
+        # Test cache service (ping also validates Redis connectivity)
         cache_service = ServiceFactory.get_cache_service()
+        if not cache_service.ping():
+            raise Exception("Redis ping failed")
         test_key = f"health_check_{task_id}"
         cache_service.set(test_key, "ok", ttl=60)
         cache_value = cache_service.get(test_key)
@@ -333,17 +343,9 @@ def configure_task_routes(app):
         "app.infrastructure.tasks.cache_cleanup_task": {"queue": "maintenance"},
     }
 
-    # Task time limits
-    app.conf.task_time_limit = 600  # 10 minutes hard limit
-    app.conf.task_soft_time_limit = 300  # 5 minutes soft limit
-
     # Task result settings
     app.conf.result_expires = 3600  # Results expire after 1 hour
     app.conf.result_persistent = True
-
-    # Task execution settings
-    app.conf.task_acks_late = True
-    app.conf.worker_prefetch_multiplier = 1
 
     # Task retry settings
     app.conf.task_reject_on_worker_lost = True

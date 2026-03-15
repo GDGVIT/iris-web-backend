@@ -101,92 +101,62 @@ class TestPathfindingAPI:
         assert data["task_id"] == task_id
         assert "error" in data
 
+    def test_get_task_status_in_progress(self, client, mock_celery_task):
+        """PROGRESS state maps to status IN_PROGRESS with progress payload."""
+        task_id = "test-task-id-123"
 
-class TestExploreAPI:
-    """Integration tests for explore API endpoints."""
+        mock_async_result = mock_celery_task.mock_async_result
+        mock_async_result.state = "PROGRESS"
+        mock_async_result.info = {
+            "status": "Searching...",
+            "search_stats": {
+                "nodes_explored": 42,
+                "current_depth": 3,
+                "last_node": "Some Page",
+                "queue_size": 15,
+            },
+            "search_time_elapsed": 2.5,
+        }
 
-    @patch("app.core.factory.ServiceFactory.create_explore_service")
-    def test_explore_valid_request(
-        self, mock_service_factory, client, valid_explore_request, sample_explore_data
-    ):
-        """Test successful explore request."""
-        # Mock explore service
-        from app.core.models import ExploreResult
-
-        mock_explore_service = Mock()
-        mock_explore_result = ExploreResult(**sample_explore_data)
-        mock_explore_service.explore_page.return_value = mock_explore_result
-        mock_service_factory.return_value = mock_explore_service
-
-        response = client.post(
-            "/explore",
-            data=json.dumps(valid_explore_request),
-            content_type="application/json",
-        )
+        response = client.get(f"/tasks/status/{task_id}")
 
         assert response.status_code == 200
         data = json.loads(response.data)
-        assert data["start_page"] == sample_explore_data["start_page"]
-        assert data["nodes"] == sample_explore_data["nodes"]
-        # Edges are serialized as lists, not tuples, in JSON
-        expected_edges = [list(edge) for edge in sample_explore_data["edges"]]
-        assert data["edges"] == expected_edges
+        assert data["status"] == "IN_PROGRESS"
+        assert data["task_id"] == task_id
+        assert "progress" in data
 
-    def test_explore_invalid_request(self, client):
-        """Test explore request with invalid data."""
-        invalid_request = {"start": ""}  # Empty start page
+    def test_get_task_status_retry(self, client, mock_celery_task):
+        """RETRY (and other non-standard states) are returned as-is from the else branch."""
+        task_id = "test-task-id-123"
 
-        response = client.post(
-            "/explore",
-            data=json.dumps(invalid_request),
-            content_type="application/json",
-        )
+        mock_async_result = mock_celery_task.mock_async_result
+        mock_async_result.state = "RETRY"
+        mock_async_result.info = {
+            "error": "Connection failed",
+            "retry_count": 1,
+            "max_retries": 3,
+        }
 
-        assert response.status_code == 400
+        response = client.get(f"/tasks/status/{task_id}")
+
+        assert response.status_code == 200
         data = json.loads(response.data)
-        assert data["error"] is True
-        assert data["code"] == "VALIDATION_ERROR"
-
-    @patch("app.core.factory.ServiceFactory.create_explore_service")
-    def test_explore_page_not_found(
-        self, mock_service_factory, client, valid_explore_request
-    ):
-        """Test explore request for non-existent page."""
-        from app.utils.exceptions import InvalidPageError
-
-        # Mock explore service to raise exception
-        mock_explore_service = Mock()
-        mock_explore_service.explore_page.side_effect = InvalidPageError(
-            "Page 'NonExistent' does not exist"
-        )
-        mock_service_factory.return_value = mock_explore_service
-
-        response = client.post(
-            "/explore",
-            data=json.dumps(valid_explore_request),
-            content_type="application/json",
-        )
-
-        assert response.status_code == 400
-        data = json.loads(response.data)
-        assert data["error"] is True
-        assert data["code"] == "INVALID_PAGE"
+        assert data["task_id"] == task_id
+        # Falls through to the else branch — status reflects the raw Celery state
+        assert data["status"] == "RETRY"
+        assert "info" in data
 
 
 class TestHealthCheckAPI:
     """Integration tests for health check endpoint."""
 
-    @patch("app.core.factory.ServiceFactory.get_redis_client")
     @patch("app.core.factory.ServiceFactory.get_cache_service")
     @patch("app.core.factory.ServiceFactory.get_wikipedia_client")
-    def test_health_check_healthy(self, mock_wikipedia, mock_cache, mock_redis, client):
+    def test_health_check_healthy(self, mock_wikipedia, mock_cache, client):
         """Test health check when all services are healthy."""
-        # Mock healthy services
-        mock_redis_client = Mock()
-        mock_redis_client.ping.return_value = True
-        mock_redis.return_value = mock_redis_client
-
         mock_cache_service = Mock()
+        mock_cache_service.ping.return_value = True
         mock_cache_service.set.return_value = None
         mock_cache_service.get.return_value = "ok"
         mock_cache.return_value = mock_cache_service
@@ -203,11 +173,14 @@ class TestHealthCheckAPI:
         assert data["cache_status"] == "healthy"
         assert data["wikipedia_api_status"] == "healthy"
 
-    @patch("app.core.factory.ServiceFactory.get_redis_client")
-    def test_health_check_redis_unhealthy(self, mock_redis, client):
+    @patch("app.core.factory.ServiceFactory.get_cache_service")
+    def test_health_check_redis_unhealthy(self, mock_cache, client):
         """Test health check when Redis is unhealthy."""
-        # Mock unhealthy Redis
-        mock_redis.side_effect = Exception("Redis connection failed")
+        mock_cache_service = Mock()
+        mock_cache_service.ping.return_value = False
+        mock_cache_service.set.return_value = None
+        mock_cache_service.get.return_value = "ok"
+        mock_cache.return_value = mock_cache_service
 
         response = client.get("/health")
 

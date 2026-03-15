@@ -39,7 +39,49 @@ def mock_redis():
     mock_redis.rpush.return_value = 1
     mock_redis.llen.return_value = 0
     mock_redis.keys.return_value = []
+
+    # Pipeline: return a mock that supports context manager and execute()
+    class _MockPipeline:
+        def __init__(self, parent):
+            self._parent = parent
+            self._calls: list = []
+
+        def rpush(self, key, *values):
+            for v in values:
+                self._parent.rpush(key, v)
+            return self
+
+        def lpop(self, key):
+            self._calls.append(("lpop", key))
+            return self
+
+        def execute(self):
+            results = []
+            for cmd, *args in self._calls:
+                if cmd == "lpop":
+                    results.append(self._parent.lpop(args[0]))
+            return results
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    mock_redis.pipeline.side_effect = lambda: _MockPipeline(mock_redis)
+
     return mock_redis
+
+
+@pytest.fixture(scope="function")
+def mock_path_finder():
+    """Mock PathFinderInterface for testing."""
+    mock = Mock()
+    mock.find_path.return_value = {
+        "path": ["Page A", "Page B", "Page C"],
+        "nodes_explored": 10,
+    }
+    return mock
 
 
 @pytest.fixture(scope="function")
@@ -83,6 +125,49 @@ def mock_cache_service():
     mock_cache.set.side_effect = mock_set
     mock_cache.exists.side_effect = mock_exists
     mock_cache.delete.side_effect = mock_delete
+    mock_cache.ping.return_value = True
+
+    # In-memory backing stores for set/hash operations
+    _sets: dict[str, set] = {}
+    _hashes: dict[str, dict] = {}
+
+    def mock_delete_many(keys):
+        for k in keys:
+            _sets.pop(k, None)
+            _hashes.pop(k, None)
+            cache_data.pop(k, None)
+
+    def mock_set_add(key, value):
+        _sets.setdefault(key, set()).add(value)
+
+    def mock_set_add_many(key, values):
+        s = _sets.setdefault(key, set())
+        s.update(values)
+
+    def mock_set_contains(key, value):
+        return value in _sets.get(key, set())
+
+    def mock_set_contains_many(key, values):
+        s = _sets.get(key, set())
+        return [v in s for v in values]
+
+    def mock_hash_set(key, field, value):
+        _hashes.setdefault(key, {})[field] = value
+
+    def mock_hash_set_many(key, mapping):
+        _hashes.setdefault(key, {}).update(mapping)
+
+    def mock_hash_get(key, field):
+        return _hashes.get(key, {}).get(field)
+
+    mock_cache.delete_many.side_effect = mock_delete_many
+    mock_cache.set_add.side_effect = mock_set_add
+    mock_cache.set_add_many.side_effect = mock_set_add_many
+    mock_cache.set_contains.side_effect = mock_set_contains
+    mock_cache.set_contains_many.side_effect = mock_set_contains_many
+    mock_cache.hash_set.side_effect = mock_hash_set
+    mock_cache.hash_set_many.side_effect = mock_hash_set_many
+    mock_cache.hash_get.side_effect = mock_hash_get
 
     return mock_cache
 
@@ -177,21 +262,6 @@ def sample_path_data():
 
 
 @pytest.fixture(scope="function")
-def sample_explore_data():
-    """Sample explore data for testing."""
-    return {
-        "start_page": "Test Page",
-        "nodes": ["Test Page", "Link 1", "Link 2", "Link 3"],
-        "edges": [
-            ("Test Page", "Link 1"),
-            ("Test Page", "Link 2"),
-            ("Test Page", "Link 3"),
-        ],
-        "total_links": 3,
-    }
-
-
-@pytest.fixture(scope="function")
 def valid_search_request():
     """Valid search request data."""
     return {
@@ -199,12 +269,6 @@ def valid_search_request():
         "end": "Machine learning",
         "algorithm": "bfs",
     }
-
-
-@pytest.fixture(scope="function")
-def valid_explore_request():
-    """Valid explore request data."""
-    return {"start": "Python (programming language)", "max_links": 10}
 
 
 @pytest.fixture(scope="function")

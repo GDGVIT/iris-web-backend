@@ -1,5 +1,8 @@
+import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import partial
 
 import requests
 
@@ -20,20 +23,188 @@ class WikipediaClient(WikipediaClientInterface):
         max_workers: int = 10,
         cache_ttl: int = 86400,  # 24 hours
         api_timeout: int = 15,
+        max_paginate_calls: int = 3,
+        request_delay: float = 0.1,
+        max_retries: int = 5,
     ):
         self.session = session or requests.Session()
         self.cache_service = cache_service
         self.max_workers = max_workers
         self.cache_ttl = cache_ttl
         self.api_timeout = api_timeout
+        self.max_paginate_calls = max_paginate_calls
+        self.request_delay = request_delay
+        self.max_retries = max_retries
         self.base_url = "https://en.wikipedia.org/w/api.php"
+
+        # Shared rate limiter — enforces minimum interval between all requests
+        # across every thread that shares this client instance.
+        self._rate_lock = threading.Lock()
+        self._last_request_time: float = 0.0
 
         # Configure session
         self.session.headers.update(
             {
-                "User-Agent": "Iris-Wikipedia-Pathfinder/1.0 (https://github.com/example/iris)"
+                "User-Agent": "Iris-Wikipedia-Pathfinder/1.0 (https://github.com/mdhishaamakhtar/iris-web-backend)"
             }
         )
+
+    def _acquire_rate_slot(self) -> None:
+        """Block until the global rate limit allows the next request.
+
+        Uses a single lock shared across all threads so that concurrent workers
+        cannot burst past the configured ``request_delay`` interval.  The lock
+        is held *during* any sleep so that a second thread cannot race in and
+        start its own request before the interval has elapsed.
+        """
+        if self.request_delay <= 0:
+            return
+        with self._rate_lock:
+            now = time.monotonic()
+            wait = self.request_delay - (now - self._last_request_time)
+            if wait > 0:
+                time.sleep(wait)
+            self._last_request_time = time.monotonic()
+
+    def _request_with_backoff(self, params: dict[str, str | int]) -> requests.Response:
+        """GET the Wikipedia API with exponential backoff on 429 and 5xx responses.
+
+        Retries up to ``self.max_retries`` times.  On a 429 the ``Retry-After``
+        header is respected when present; otherwise the backoff is ``2^attempt``
+        seconds.  Network-level errors (``RequestException``) are also retried.
+        Other 4xx errors are raised immediately as ``WikipediaAPIError``.
+        """
+        for attempt in range(self.max_retries):
+            self._acquire_rate_slot()
+            try:
+                response = self.session.get(
+                    self.base_url, params=params, timeout=self.api_timeout
+                )
+            except requests.RequestException as e:
+                if attempt == self.max_retries - 1:
+                    raise WikipediaAPIError(f"API request failed: {e}")
+                wait = 2**attempt
+                logger.warning(
+                    f"Request error (attempt {attempt + 1}/{self.max_retries}), "
+                    f"retrying in {wait}s: {e}"
+                )
+                time.sleep(wait)
+                continue
+
+            if response.status_code == 429:
+                if attempt == self.max_retries - 1:
+                    raise WikipediaAPIError(
+                        f"Rate limited after {self.max_retries} retries"
+                    )
+                wait = int(response.headers.get("Retry-After", 2 ** (attempt + 1)))
+                logger.warning(
+                    f"Rate limited (429), retrying in {wait}s "
+                    f"(attempt {attempt + 1}/{self.max_retries})"
+                )
+                time.sleep(wait)
+                continue
+
+            if response.status_code >= 500:
+                if attempt == self.max_retries - 1:
+                    raise WikipediaAPIError(
+                        f"Server error {response.status_code} after {self.max_retries} retries"
+                    )
+                wait = 2**attempt
+                logger.warning(
+                    f"Server error {response.status_code} "
+                    f"(attempt {attempt + 1}/{self.max_retries}), retrying in {wait}s"
+                )
+                time.sleep(wait)
+                continue
+
+            try:
+                response.raise_for_status()
+            except requests.HTTPError as e:
+                raise WikipediaAPIError(f"API error: {e}")
+
+            return response
+
+        raise WikipediaAPIError(f"API request failed after {self.max_retries} attempts")
+
+    def _bulk_fetch(
+        self,
+        page_titles: list[str],
+        cache_prefix: str,
+        fetch_fn: Callable[..., dict[str, list[str]]],
+        on_page_fetched: Callable[[str, list[str]], None] | None,
+    ) -> dict[str, list[str]]:
+        """Shared scaffolding: cache-check, thread-pool fetch, cache results.
+
+        Args:
+            page_titles: Wikipedia page titles to fetch.
+            cache_prefix: Redis key prefix (e.g. ``"wiki_links"`` or
+                ``"wiki_backlinks"``).
+            fetch_fn: Callable that fetches a single page and returns
+                ``{title: [links]}``.
+            on_page_fetched: Optional callback fired per page (thread-safe).
+
+        Returns:
+            Dictionary mapping page titles to their link/backlink lists.
+        """
+        if not page_titles:
+            return {}
+
+        results: dict[str, list[str]] = {}
+        uncached_titles: list[str] = []
+
+        # Check cache first if cache service is available
+        if self.cache_service:
+            for title in page_titles:
+                cache_key = f"{cache_prefix}:{title}"
+                cached_links = self.cache_service.get(cache_key)
+                if cached_links is not None:
+                    results[title] = cached_links
+                    logger.debug(f"Cache hit for page: {title}")
+                    if on_page_fetched:
+                        on_page_fetched(title, cached_links)
+                else:
+                    uncached_titles.append(title)
+
+            logger.info(
+                f"Cache hits: {len(results)}, Cache misses: {len(uncached_titles)}"
+            )
+        else:
+            uncached_titles = page_titles
+
+        # Fetch uncached titles from Wikipedia API using thread pool
+        if uncached_titles:
+            fresh_results: dict[str, list[str]] = {}
+
+            bound_fetch = partial(fetch_fn, max_paginate_calls=self.max_paginate_calls)
+
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                future_to_title = {
+                    executor.submit(bound_fetch, title): title
+                    for title in uncached_titles
+                }
+                for future in as_completed(future_to_title):
+                    title = future_to_title[future]
+                    try:
+                        page_result = future.result()
+                    except WikipediaAPIError:
+                        raise
+                    except Exception as e:
+                        logger.error(f"Unexpected error fetching '{title}': {e}")
+                        page_result = {title: []}
+                    fresh_results.update(page_result)
+                    if on_page_fetched:
+                        on_page_fetched(title, page_result.get(title, []))
+
+            # Cache the fresh results
+            if self.cache_service:
+                for title, links in fresh_results.items():
+                    cache_key = f"{cache_prefix}:{title}"
+                    self.cache_service.set(cache_key, links, ttl=self.cache_ttl)
+                    logger.debug(f"Cached {cache_prefix} for page: {title}")
+
+            results.update(fresh_results)
+
+        return results
 
     def get_links_bulk(
         self,
@@ -52,98 +223,39 @@ class WikipediaClient(WikipediaClientInterface):
         Raises:
             WikipediaAPIError: When API requests fail
         """
-        if not page_titles:
-            return {}
+        return self._bulk_fetch(
+            page_titles, "wiki_links", self._fetch_single_page, on_page_fetched
+        )
 
-        results = {}
-        uncached_titles = []
-
-        # Check cache first if cache service is available
-        if self.cache_service:
-            for title in page_titles:
-                cache_key = f"wiki_links:{title}"
-                cached_links = self.cache_service.get(cache_key)
-                if cached_links is not None:
-                    results[title] = cached_links
-                    logger.debug(f"Cache hit for page: {title}")
-                    if on_page_fetched:
-                        on_page_fetched(title, cached_links)
-                else:
-                    uncached_titles.append(title)
-
-            logger.info(
-                f"Cache hits: {len(results)}, Cache misses: {len(uncached_titles)}"
-            )
-        else:
-            uncached_titles = page_titles
-
-        # Fetch uncached titles from Wikipedia API
-        if uncached_titles:
-            fresh_results = self._fetch_from_wikipedia(uncached_titles, on_page_fetched)
-
-            # Cache the fresh results
-            if self.cache_service:
-                for title, links in fresh_results.items():
-                    cache_key = f"wiki_links:{title}"
-                    self.cache_service.set(cache_key, links, ttl=self.cache_ttl)
-                    logger.debug(f"Cached links for page: {title}")
-
-            results.update(fresh_results)
-
-        return results
-
-    def _fetch_from_wikipedia(
+    def get_backlinks_bulk(
         self,
         page_titles: list[str],
         on_page_fetched: Callable[[str, list[str]], None] | None = None,
     ) -> dict[str, list[str]]:
-        """Fetch page links directly from Wikipedia API without caching.
-
-        Each title is fetched in its own API call to avoid link starvation:
-        when multiple titles share a single `prop=links` request the 500-link
-        response cap is global, so a page with many links can starve others,
-        causing them to return 0 links.  Parallelism is preserved via the
-        thread pool.
-
-        `on_page_fetched` is called from worker threads as each response
-        arrives, enabling real-time progress reporting spread across the
-        network round-trip window rather than all at once after all pages
-        have loaded.
         """
-        results = {}
+        Fetches backlinks (pages that link TO each page) using bulk API requests with caching.
 
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_title = {
-                executor.submit(self._fetch_single_page, title): title
-                for title in page_titles
-            }
-            for future in as_completed(future_to_title):
-                title = future_to_title[future]
-                try:
-                    page_result = future.result()
-                except WikipediaAPIError:
-                    raise
-                except Exception as e:
-                    logger.error(f"Unexpected error fetching '{title}': {e}")
-                    page_result = {title: []}
-                results.update(page_result)
-                if on_page_fetched:
-                    on_page_fetched(title, page_result.get(title, []))
+        Args:
+            page_titles: List of Wikipedia page titles
 
-        return results
+        Returns:
+            Dictionary mapping page titles to pages that link to them
 
-    def _fetch_single_page(self, title: str) -> dict[str, list[str]]:
-        """Fetch links for a single Wikipedia page.
-
-        Known limitation: Wikipedia returns at most 500 links per request
-        (pllimit=max for anonymous callers).  Pages with more than 500 links
-        (e.g. "United States", "World War II") return a `continue` token for
-        pagination, which this method does not follow.  BFS therefore only
-        explores the first 500 outgoing links of any given page.  This is
-        acceptable for most articles but may cause sub-optimal paths through
-        high-connectivity hub pages.
+        Raises:
+            WikipediaAPIError: When API requests fail
         """
-        params = {
+        return self._bulk_fetch(
+            page_titles,
+            "wiki_backlinks",
+            self._fetch_backlinks_single_page,
+            on_page_fetched,
+        )
+
+    def _fetch_single_page(
+        self, title: str, max_paginate_calls: int = 10
+    ) -> dict[str, list[str]]:
+        """Fetch links for a single Wikipedia page with plcontinue pagination."""
+        params: dict[str, str | int] = {
             "action": "query",
             "format": "json",
             "titles": title,
@@ -151,18 +263,60 @@ class WikipediaClient(WikipediaClientInterface):
             "pllimit": "max",
             "redirects": 1,
         }
+        all_links: list[str] = []
+        max_pages = max_paginate_calls
+        calls = 0
 
-        try:
-            response = self.session.get(
-                self.base_url, params=params, timeout=self.api_timeout
+        while calls < max_pages:
+            data = self._request_with_backoff(params).json()
+            query_data = data.get("query", {})
+            page_links = self._parse_batch_response(query_data, [title])
+            all_links.extend(page_links.get(title, []))
+            calls += 1
+            if "continue" not in data:
+                break
+            params["plcontinue"] = data["continue"]["plcontinue"]
+            params["continue"] = data["continue"]["continue"]
+
+        return {title: all_links}
+
+    def _fetch_backlinks_single_page(
+        self, title: str, max_paginate_calls: int = 10
+    ) -> dict[str, list[str]]:
+        """Fetch backlinks for a single Wikipedia page with blcontinue pagination.
+
+        Uses ``list=backlinks`` which returns pages that link *to* ``title``.
+        Only namespace-0 (article) backlinks are returned.
+        """
+        params: dict[str, str | int] = {
+            "action": "query",
+            "format": "json",
+            "list": "backlinks",
+            "bltitle": title,
+            "bllimit": "max",
+            "blnamespace": 0,
+            "redirects": 1,
+        }
+        all_backlinks: list[str] = []
+        max_pages = max_paginate_calls
+        calls = 0
+
+        while calls < max_pages:
+            data = self._request_with_backoff(params).json()
+            backlinks = data.get("query", {}).get("backlinks", [])
+            all_backlinks.extend(
+                bl["title"]
+                for bl in backlinks
+                if ":" not in bl.get("title", "")
+                or bl.get("title", "").startswith("List of")
             )
-            response.raise_for_status()
-            data = response.json().get("query", {})
-        except requests.RequestException as e:
-            logger.error(f"Wikipedia API request failed for '{title}': {e}")
-            raise WikipediaAPIError(f"API request failed: {e}")
+            calls += 1
+            if "continue" not in data:
+                break
+            params["blcontinue"] = data["continue"]["blcontinue"]
+            params["continue"] = data["continue"]["continue"]
 
-        return self._parse_batch_response(data, [title])
+        return {title: all_backlinks}
 
     def _parse_batch_response(
         self, data: dict, original_batch: list[str]
