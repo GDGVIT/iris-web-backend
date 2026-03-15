@@ -10,17 +10,16 @@
 
 Iris finds a path between any two Wikipedia pages by traversing their links.
 
-You give it two page titles — say, "Microsoft" and "Ferrari" — and it walks Wikipedia's link graph using BFS until it finds the connection. Results are visualized as an interactive graph you can drag around.
+You give it two page titles — say, "Banana" and "Shah Rukh Khan" — and it walks Wikipedia's link graph using BFS until it finds the connection. Results are visualized as an interactive graph you can drag around.
 
-It uses Redis to store the BFS state instead of holding everything in memory, which keeps it from blowing up on deep searches.
+It uses **bidirectional BFS** (default) which searches simultaneously from both pages toward each other using Wikipedia backlinks, meeting in the middle for faster results. You can also use standard forward-only BFS if preferred. Redis stores the search state instead of holding everything in memory, which keeps it from blowing up on deep searches.
 
 ## What It Does
 
-- Find Wikipedia paths via Redis-based BFS (best-effort — not guaranteed shortest)
+- Find Wikipedia paths via **bidirectional BFS** (default) or standard forward-only BFS — explores from both pages simultaneously to meet in the middle
 - Async task processing — searches run in the background, results polled live
-- Real-time progress updates during search
+- Real-time progress updates during search (aggregated from both search frontiers)
 - Interactive D3.js graph visualization of the path
-- Persistent search state — page refreshes resume from where you left off
 
 ## Tech Stack
 
@@ -56,15 +55,6 @@ Swagger docs at [http://localhost:9020/api/docs](http://localhost:9020/api/docs)
 | `dev.sh` | Local development — starts Redis (if needed), Flask, and Celery in one terminal |
 | `start.sh` | Manual production-like run on a single host (both web + worker) |
 | `entrypoint.sh` | Docker/Railway container entry — switches on `SERVICE_TYPE` env var |
-
-## API
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/getPath` | Start a pathfinding task, returns `task_id` |
-| `GET` | `/tasks/status/<id>` | Poll task status and live progress |
-| `GET` | `/health` | Redis + cache + Wikipedia API health check |
-| `GET` | `/api/docs` | Swagger UI |
 
 ## Dev
 
