@@ -393,8 +393,18 @@ class PathFinderUI {
                     StateManager.clear();
                     break;
 
+                case 'REVOKED':
+                    this.clearActiveTask();
+                    this.hideLoading();
+                    document.getElementById('visualizationSection').classList.remove('show');
+                    this.showError('Search was cancelled.');
+                    StateManager.clear();
+                    break;
+
                 default:
                     this.clearActiveTask();
+                    this.hideLoading();
+                    document.getElementById('visualizationSection').classList.remove('show');
                     this.showError(`Unknown task status: ${data.status}`);
                     StateManager.clear();
             }
