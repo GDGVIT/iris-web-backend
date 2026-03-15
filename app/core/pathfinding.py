@@ -271,6 +271,55 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             logger.error(f"Failed to cleanup search state: {e}")
 
 
+class BidirProgressAggregator:
+    """
+    Combines progress from two concurrent BFS frontiers before firing the
+    real progress callback.  Each frontier calls ``record(title, depth,
+    direction)`` from its ``on_page_fetched`` thread; the aggregator owns
+    all shared counters under a single lock so neither frontier needs to
+    know about the other.
+    """
+
+    def __init__(
+        self,
+        callback: Callable,
+        queue_service: QueueInterface,
+        fwd_q: str,
+        bwd_q: str,
+    ) -> None:
+        self._callback = callback
+        self._queue_service = queue_service
+        self._fwd_q = fwd_q
+        self._bwd_q = bwd_q
+        self._fwd_nodes = 0
+        self._bwd_nodes = 0
+        self._lock = threading.Lock()
+
+    def record(self, title: str, depth: int, direction: str) -> None:
+        with self._lock:
+            if direction == "forward":
+                self._fwd_nodes += 1
+            else:
+                self._bwd_nodes += 1
+            combined_queue = (
+                self._queue_service.length(self._fwd_q)
+                + self._queue_service.length(self._bwd_q)
+            )
+            self._callback(
+                {
+                    "nodes_explored": self._fwd_nodes + self._bwd_nodes,
+                    "queue_size": combined_queue,
+                    "current_depth": depth,
+                    "last_node": title,
+                    "direction": direction,
+                }
+            )
+
+    @property
+    def total_nodes(self) -> int:
+        return self._fwd_nodes + self._bwd_nodes
+
+
 class BidirectionalBFSPathFinder(PathFinderInterface):
     """
     Bidirectional BFS implementation that searches from both start and end pages.
@@ -295,8 +344,6 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         self.batch_size = batch_size
         self.progress_callback = progress_callback
         self.redis = cache_service.redis_client  # type: ignore[attr-defined]
-        self.nodes_explored = 0
-        self.nodes_lock = threading.Lock()
 
     def find_path(self, start_page: str, end_page: str) -> dict[str, Any]:
         """
@@ -332,7 +379,13 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
 
         keys = [fwd_q, bwd_q, fwd_vis, bwd_vis, fwd_par, bwd_par]
 
-        self.nodes_explored = 0
+        tracker = (
+            BidirProgressAggregator(
+                self.progress_callback, self.queue_service, fwd_q, bwd_q
+            )
+            if self.progress_callback
+            else None
+        )
 
         try:
             self.redis.sadd(fwd_vis, start_page)
@@ -354,8 +407,9 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
                 bwd_par,
                 fwd_max,
                 bwd_max,
+                tracker,
             )
-            return {"path": path, "nodes_explored": self.nodes_explored}
+            return {"path": path, "nodes_explored": tracker.total_nodes if tracker else 0}
         finally:
             with self.redis.pipeline() as pipe:
                 for key in keys:
@@ -374,6 +428,7 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         bwd_par: str,
         fwd_max: int,
         bwd_max: int,
+        tracker: BidirProgressAggregator | None,
     ) -> list[str]:
         while True:
             fwd_size = self.queue_service.length(fwd_q)
@@ -382,23 +437,13 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
             if fwd_size == 0 and bwd_size == 0:
                 break
 
-            if self.progress_callback:
-                self.progress_callback(
-                    {
-                        "nodes_explored": self.nodes_explored,
-                        "queue_size": fwd_size + bwd_size,
-                        "current_depth": 0,
-                        "last_node": start_page,
-                    }
-                )
-
             if bwd_size > 0 and (fwd_size == 0 or bwd_size < fwd_size):
                 meeting = self._expand_backward_batch(
-                    end_page, fwd_q, bwd_q, bwd_vis, bwd_par, fwd_vis, fwd_par, bwd_max
+                    end_page, bwd_q, bwd_vis, bwd_par, fwd_vis, fwd_par, bwd_max, tracker
                 )
             else:
                 meeting = self._expand_forward_batch(
-                    start_page, fwd_q, bwd_q, fwd_vis, fwd_par, bwd_vis, bwd_par, fwd_max
+                    start_page, fwd_q, fwd_vis, fwd_par, bwd_vis, bwd_par, fwd_max, tracker
                 )
 
             if meeting is not None:
@@ -412,12 +457,12 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         self,
         start_page: str,
         fwd_q: str,
-        bwd_q: str,
         fwd_vis: str,
         fwd_par: str,
         bwd_vis: str,
         bwd_par: str,
         fwd_max: int,
+        tracker: BidirProgressAggregator | None,
     ) -> str | None:
         batch = self.queue_service.pop_batch(fwd_q, self.batch_size)
         if not batch:
@@ -429,25 +474,9 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
 
         page_names = [item["page"] for item in batch]
 
-        def on_page_fetched(
-            _title: str,
-            _links: list[str],
-            *,
-            _d: int = depth,
-        ) -> None:
-            with self.nodes_lock:
-                self.nodes_explored += 1
-            if self.progress_callback:
-                combined_size = self.queue_service.length(fwd_q) + self.queue_service.length(bwd_q)
-                self.progress_callback(
-                    {
-                        "nodes_explored": self.nodes_explored,
-                        "queue_size": combined_size,
-                        "current_depth": _d,
-                        "last_node": _title,
-                        "direction": "forward",
-                    }
-                )
+        def on_page_fetched(_title: str, _links: list[str], *, _d: int = depth) -> None:
+            if tracker:
+                tracker.record(_title, _d, "forward")
 
         links_bulk = self.wikipedia_client.get_links_bulk(page_names, on_page_fetched)
         meeting_candidates: list[str] = []
@@ -499,13 +528,13 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
     def _expand_backward_batch(
         self,
         end_page: str,
-        fwd_q: str,
         bwd_q: str,
         bwd_vis: str,
         bwd_par: str,
         fwd_vis: str,
         fwd_par: str,
         bwd_max: int,
+        tracker: BidirProgressAggregator | None,
     ) -> str | None:
         batch = self.queue_service.pop_batch(bwd_q, self.batch_size)
         if not batch:
@@ -517,25 +546,9 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
 
         page_names = [item["page"] for item in batch]
 
-        def on_page_fetched(
-            _title: str,
-            _links: list[str],
-            *,
-            _d: int = depth,
-        ) -> None:
-            with self.nodes_lock:
-                self.nodes_explored += 1
-            if self.progress_callback:
-                combined_size = self.queue_service.length(fwd_q) + self.queue_service.length(bwd_q)
-                self.progress_callback(
-                    {
-                        "nodes_explored": self.nodes_explored,
-                        "queue_size": combined_size,
-                        "current_depth": _d,
-                        "last_node": _title,
-                        "direction": "backward",
-                    }
-                )
+        def on_page_fetched(_title: str, _links: list[str], *, _d: int = depth) -> None:
+            if tracker:
+                tracker.record(_title, _d, "backward")
 
         links_bulk = self.wikipedia_client.get_backlinks_bulk(
             page_names, on_page_fetched
