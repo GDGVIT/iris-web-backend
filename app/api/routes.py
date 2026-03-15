@@ -55,12 +55,12 @@ def get_path_route():
             algorithm:
               type: string
               enum: [bfs, bidirectional]
-              default: bfs
+              default: bidirectional
               description: >
-                Pathfinding algorithm. Note: "bidirectional" is accepted but
-                falls back to standard BFS. Bidirectional BFS is infeasible
-                on Wikipedia because incoming links vastly outnumber outgoing
-                links, making the reverse frontier explode.
+                Pathfinding algorithm. "bidirectional" (default) searches from
+                both the start and end pages simultaneously using Wikipedia
+                backlinks for the reverse frontier, typically finding shorter
+                paths faster. "bfs" uses standard forward-only BFS.
     responses:
       202:
         description: Task accepted, poll poll_url for results

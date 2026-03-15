@@ -22,7 +22,7 @@ class SearchRequestSchema(Schema):
         load_default=None, validate=validate.Range(min=1, max=10), allow_none=True
     )
     algorithm = fields.Str(
-        load_default="bfs",
+        load_default="bidirectional",
         validate=validate.OneOf(["bfs", "bidirectional"]),
         allow_none=True,
     )
@@ -34,7 +34,7 @@ class SearchRequestSchema(Schema):
             start_page=data["start"].strip(),
             end_page=data["end"].strip(),
             max_depth=data.get("max_depth"),
-            algorithm=data.get("algorithm", "bfs"),
+            algorithm=data.get("algorithm", "bidirectional"),
         )
 
 

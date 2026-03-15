@@ -72,7 +72,7 @@ class ServiceFactory:
 
     @classmethod
     def create_pathfinding_service(
-        cls, algorithm: str = "bfs", progress_callback: Callable | None = None
+        cls, algorithm: str = "bidirectional", progress_callback: Callable | None = None
     ) -> PathFindingService:
         """Create pathfinding service with specified algorithm."""
         wikipedia_client = cls.get_wikipedia_client()
@@ -85,7 +85,12 @@ class ServiceFactory:
 
         if algorithm.lower() == "bidirectional":
             path_finder = BidirectionalBFSPathFinder(
-                wikipedia_client, cache_service, queue_service, max_depth
+                wikipedia_client,
+                cache_service,
+                queue_service,
+                max_depth,
+                batch_size,
+                progress_callback,
             )
         else:  # Default to regular BFS
             path_finder = RedisBasedBFSPathFinder(
@@ -138,7 +143,7 @@ class ServiceFactory:
 
 
 def get_pathfinding_service(
-    algorithm: str = "bfs", progress_callback: Callable | None = None
+    algorithm: str = "bidirectional", progress_callback: Callable | None = None
 ) -> PathFindingService:
     """Convenience function to get pathfinding service."""
     return ServiceFactory.create_pathfinding_service(algorithm, progress_callback)

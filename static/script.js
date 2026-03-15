@@ -324,7 +324,8 @@ class PathFinderUI {
                 },
                 body: JSON.stringify({
                     start: startPage,
-                    end: endPage
+                    end: endPage,
+                    algorithm: "bidirectional"
                 })
             });
 

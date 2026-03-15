@@ -23,7 +23,9 @@ logger = get_logger(__name__)
     soft_time_limit=300,  # 5 minutes
     time_limit=600,  # 10 minutes
 )
-def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs"):
+def find_path_task(
+    self, start_page: str, end_page: str, algorithm: str = "bidirectional"
+):
     """
     Celery task for finding a path between Wikipedia pages.
 
@@ -79,12 +81,24 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
             },
         )
 
-        # Create progress callback for real-time updates
+        # Create progress callback for real-time updates.
+        # The pathfinder supplies whatever fields it knows; we enrich with
+        # task-level context (start_page, end_page, max_depth) here.
+        from flask import current_app
+
+        max_depth = current_app.config.get("MAX_SEARCH_DEPTH", 6)
+
         def progress_update(progress_data):
-            # Add start/end pages to progress data
-            progress_data["search_stats"]["start_page"] = start_page
-            progress_data["search_stats"]["end_page"] = end_page
-            progress_data["search_stats"]["max_depth"] = 6  # From config
+            # Normalise: pathfinders may emit a flat dict or one with search_stats
+            if "search_stats" not in progress_data:
+                progress_data = {
+                    "status": "Searching...",
+                    "search_stats": progress_data,
+                    "search_time_elapsed": progress_data.get("search_time_elapsed", 0),
+                }
+            progress_data["search_stats"].setdefault("start_page", start_page)
+            progress_data["search_stats"].setdefault("end_page", end_page)
+            progress_data["search_stats"].setdefault("max_depth", max_depth)
 
             self.update_state(state="PROGRESS", meta=progress_data)
 
@@ -134,7 +148,7 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
                     "queue_size": 1,
                     "start_page": start_page,
                     "end_page": end_page,
-                    "max_depth": 6,
+                    "max_depth": max_depth,
                 },
                 "search_time_elapsed": 0,
             },
@@ -158,7 +172,7 @@ def find_path_task(self, start_page: str, end_page: str, algorithm: str = "bfs")
                 "final_depth": result.length - 1 if result.path else 0,
                 "start_page": result.start_page,
                 "end_page": result.end_page,
-                "max_depth": 6,  # From config
+                "max_depth": max_depth,
                 "search_completed": True,
             },
         }

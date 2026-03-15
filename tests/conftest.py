@@ -39,6 +39,37 @@ def mock_redis():
     mock_redis.rpush.return_value = 1
     mock_redis.llen.return_value = 0
     mock_redis.keys.return_value = []
+
+    # Pipeline: return a mock that supports context manager and execute()
+    class _MockPipeline:
+        def __init__(self, parent):
+            self._parent = parent
+            self._calls: list = []
+
+        def rpush(self, key, *values):
+            for v in values:
+                self._parent.rpush(key, v)
+            return self
+
+        def lpop(self, key):
+            self._calls.append(("lpop", key))
+            return self
+
+        def execute(self):
+            results = []
+            for cmd, *args in self._calls:
+                if cmd == "lpop":
+                    results.append(self._parent.lpop(args[0]))
+            return results
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    mock_redis.pipeline.side_effect = lambda: _MockPipeline(mock_redis)
+
     return mock_redis
 
 
@@ -83,6 +114,96 @@ def mock_cache_service():
     mock_cache.set.side_effect = mock_set
     mock_cache.exists.side_effect = mock_exists
     mock_cache.delete.side_effect = mock_delete
+
+    # Provide a mock redis_client used by pathfinders for SET/Hash operations.
+    # Use in-memory sets and dicts so BFS logic works correctly in tests.
+    visited_sets: dict = {}
+    parent_hashes: dict = {}
+
+    mock_redis = Mock()
+
+    # SADD: add member to a set, return number added
+    def _sadd(key, *members):
+        if key not in visited_sets:
+            visited_sets[key] = set()
+        before = len(visited_sets[key])
+        visited_sets[key].update(members)
+        return len(visited_sets[key]) - before
+
+    # SISMEMBER: check membership
+    def _sismember(key, member):
+        return member in visited_sets.get(key, set())
+
+    # HSET: set a field in a hash
+    def _hset(key, field, value):
+        if key not in parent_hashes:
+            parent_hashes[key] = {}
+        parent_hashes[key][field] = value
+        return 1
+
+    # HGET: get a field from a hash
+    def _hget(key, field):
+        return parent_hashes.get(key, {}).get(field)
+
+    # DELETE: remove keys
+    def _delete(*keys):
+        for key in keys:
+            visited_sets.pop(key, None)
+            parent_hashes.pop(key, None)
+        return len(keys)
+
+    mock_redis.sadd.side_effect = _sadd
+    mock_redis.sismember.side_effect = _sismember
+    mock_redis.hset.side_effect = _hset
+    mock_redis.hget.side_effect = _hget
+    mock_redis.delete.side_effect = _delete
+
+    # Pipeline support: collect commands and execute them all at once
+    class MockPipeline:
+        def __init__(self):
+            self._commands = []
+
+        def sadd(self, key, *members):
+            self._commands.append(("sadd", key, members))
+            return self
+
+        def sismember(self, key, member):
+            self._commands.append(("sismember", key, member))
+            return self
+
+        def hset(self, key, field, value):
+            self._commands.append(("hset", key, field, value))
+            return self
+
+        def delete(self, *keys):
+            self._commands.append(("delete", keys))
+            return self
+
+        def execute(self):
+            results = []
+            for cmd in self._commands:
+                if cmd[0] == "sadd":
+                    results.append(_sadd(cmd[1], *cmd[2]))
+                elif cmd[0] == "sismember":
+                    results.append(_sismember(cmd[1], cmd[2]))
+                elif cmd[0] == "hset":
+                    results.append(_hset(cmd[1], cmd[2], cmd[3]))
+                elif cmd[0] == "delete":
+                    results.append(_delete(*cmd[1]))
+                else:
+                    results.append(None)
+            self._commands = []
+            return results
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    mock_redis.pipeline.side_effect = lambda: MockPipeline()
+
+    mock_cache.redis_client = mock_redis
 
     return mock_cache
 

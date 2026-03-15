@@ -52,6 +52,22 @@ class WikipediaClientInterface(ABC):
         pass
 
     @abstractmethod
+    def get_backlinks_bulk(
+        self,
+        page_titles: list[str],
+        on_page_fetched: Callable[[str, list[str]], None] | None = None,
+    ) -> dict[str, list[str]]:
+        """Get backlinks (pages that link TO) for multiple pages in bulk.
+
+        Args:
+            page_titles: Pages to fetch backlinks for.
+            on_page_fetched: Optional callback fired as soon as each page's
+                backlinks are available.  May be called from worker threads —
+                must be thread-safe.
+        """
+        pass
+
+    @abstractmethod
     def page_exists(self, page_title: str) -> bool:
         """Check if a Wikipedia page exists."""
         pass

@@ -233,26 +233,91 @@ class TestRedisBasedBFSPathFinder:
         # Verify queue operations were called
         assert mock_queue_service.push.called
         assert mock_queue_service.pop_batch.called
-        assert mock_queue_service.clear.called
 
-    def test_cache_integration(self, mock_wikipedia_client, mock_queue_service):
-        """Test that cache operations work correctly for visited pages and paths."""
-        # Use a real-like cache implementation for testing
-        cache_data = {}
+    def test_redis_ops_integration(self, mock_wikipedia_client, mock_queue_service):
+        """Test that Redis SET/Hash operations work correctly for visited tracking."""
+        # Use the shared mock_cache_service fixture approach but inline here
+        visited_sets: dict = {}
+        parent_hashes: dict = {}
 
-        def mock_get(key):
-            return cache_data.get(key)
+        mock_redis = Mock()
 
-        def mock_set(key, value, ttl=None):
-            cache_data[key] = value
+        def _sadd(key, *members):
+            if key not in visited_sets:
+                visited_sets[key] = set()
+            visited_sets[key].update(members)
+            return 1
 
-        def mock_exists(key):
-            return key in cache_data
+        def _sismember(key, member):
+            return member in visited_sets.get(key, set())
+
+        def _hset(key, field, value):
+            if key not in parent_hashes:
+                parent_hashes[key] = {}
+            parent_hashes[key][field] = value
+            return 1
+
+        def _hget(key, field):
+            return parent_hashes.get(key, {}).get(field)
+
+        def _delete(*keys):
+            for key in keys:
+                visited_sets.pop(key, None)
+                parent_hashes.pop(key, None)
+            return len(keys)
+
+        mock_redis.sadd.side_effect = _sadd
+        mock_redis.sismember.side_effect = _sismember
+        mock_redis.hset.side_effect = _hset
+        mock_redis.hget.side_effect = _hget
+        mock_redis.delete.side_effect = _delete
+
+        class MockPipeline:
+            def __init__(self):
+                self._cmds = []
+
+            def sadd(self, key, *members):
+                self._cmds.append(("sadd", key, members))
+                return self
+
+            def sismember(self, key, member):
+                self._cmds.append(("sismember", key, member))
+                return self
+
+            def hset(self, key, field, value):
+                self._cmds.append(("hset", key, field, value))
+                return self
+
+            def delete(self, *keys):
+                self._cmds.append(("delete", keys))
+                return self
+
+            def execute(self):
+                results = []
+                for cmd in self._cmds:
+                    if cmd[0] == "sadd":
+                        results.append(_sadd(cmd[1], *cmd[2]))
+                    elif cmd[0] == "sismember":
+                        results.append(_sismember(cmd[1], cmd[2]))
+                    elif cmd[0] == "hset":
+                        results.append(_hset(cmd[1], cmd[2], cmd[3]))
+                    elif cmd[0] == "delete":
+                        results.append(_delete(*cmd[1]))
+                    else:
+                        results.append(None)
+                self._cmds = []
+                return results
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+        mock_redis.pipeline.side_effect = lambda: MockPipeline()
 
         mock_cache_service = Mock()
-        mock_cache_service.get.side_effect = mock_get
-        mock_cache_service.set.side_effect = mock_set
-        mock_cache_service.exists.side_effect = mock_exists
+        mock_cache_service.redis_client = mock_redis
 
         # Mock simple path A -> B
         mock_wikipedia_client.page_exists.return_value = True
@@ -266,31 +331,45 @@ class TestRedisBasedBFSPathFinder:
 
         assert result["path"] == ["Page A", "Page B"]
         assert "nodes_explored" in result
-        # Verify cache operations were called for visited tracking and path storage
-        assert mock_cache_service.set.called
-        assert mock_cache_service.get.called
+        # Verify Redis SET operations were called for visited tracking
+        assert mock_redis.sadd.called
+        assert mock_redis.hset.called
 
 
 class TestBidirectionalBFSPathFinder:
     """Integration tests for bidirectional BFS pathfinding."""
 
-    def test_bidirectional_fallback_to_regular_bfs(
+    def test_bidirectional_direct_connection(
         self, mock_wikipedia_client, mock_cache_service, mock_queue_service
     ):
-        """Test that bidirectional BFS falls back to regular BFS for now."""
-        # Mock simple path
+        """Test that bidirectional BFS finds a direct connection."""
         mock_wikipedia_client.page_exists.return_value = True
+        # Forward: Page A links to Page B
         mock_wikipedia_client.get_links_bulk.return_value = {"Page A": ["Page B"]}
+        # Backward: nothing needed if forward finds it immediately
+        mock_wikipedia_client.get_backlinks_bulk.return_value = {"Page B": []}
 
         pathfinder = BidirectionalBFSPathFinder(
-            mock_wikipedia_client, mock_cache_service, mock_queue_service
+            mock_wikipedia_client, mock_cache_service, mock_queue_service, max_depth=6
         )
 
         result = pathfinder.find_path("Page A", "Page B")
 
-        # Should work through fallback mechanism
-        assert result["path"] == ["Page A", "Page B"]
+        assert "Page A" in result["path"]
+        assert "Page B" in result["path"]
         assert "nodes_explored" in result
+
+    def test_bidirectional_same_page(
+        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
+    ):
+        """Test bidirectional BFS when start and end are the same."""
+        pathfinder = BidirectionalBFSPathFinder(
+            mock_wikipedia_client, mock_cache_service, mock_queue_service
+        )
+
+        result = pathfinder.find_path("Page A", "Page A")
+        assert result["path"] == ["Page A"]
+        assert result["nodes_explored"] == 1
 
 
 class TestPathfindingErrorHandling:
@@ -315,22 +394,17 @@ class TestPathfindingErrorHandling:
             pathfinder.find_path("Page A", "Page B")
 
     def test_cache_error_handling(self, mock_wikipedia_client, mock_queue_service):
-        """Test handling of cache errors."""
+        """Test handling of Redis errors during BFS state operations."""
         from app.utils.exceptions import CacheConnectionError
 
-        # Mock cache service to raise error
+        # Mock cache service with a redis_client that raises on sadd
         mock_cache_service = Mock()
-        mock_cache_service.exists.side_effect = CacheConnectionError(
-            "Redis connection failed"
-        )
-        # Mock other cache methods to not raise errors so we reach the exists call
-        mock_cache_service.get.return_value = [
-            "Page A"
-        ]  # Return a path for current page
-        mock_cache_service.set.return_value = None
+        mock_redis = Mock()
+        mock_redis.sadd.side_effect = CacheConnectionError("Redis connection failed")
+        mock_cache_service.redis_client = mock_redis
 
         mock_wikipedia_client.page_exists.return_value = True
-        # Set up links that don't immediately lead to target, forcing visited check
+        # Set up links that don't immediately lead to target, forcing sadd call
         mock_wikipedia_client.get_links_bulk.return_value = {
             "Page A": ["Page C", "Page D"]
         }

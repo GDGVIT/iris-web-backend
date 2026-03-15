@@ -22,6 +22,9 @@ class BaseConfig:
     # Wikipedia API settings
     WIKIPEDIA_API_TIMEOUT = int(os.environ.get("WIKIPEDIA_API_TIMEOUT", "15"))
     WIKIPEDIA_MAX_WORKERS = int(os.environ.get("WIKIPEDIA_MAX_WORKERS", "10"))
+    WIKIPEDIA_MAX_PAGINATE_CALLS = int(
+        os.environ.get("WIKIPEDIA_MAX_PAGINATE_CALLS", "10")
+    )
 
     # Cache settings
     CACHE_TTL = int(os.environ.get("CACHE_TTL", "86400"))  # 24 hours
