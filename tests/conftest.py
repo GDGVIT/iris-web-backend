@@ -74,6 +74,17 @@ def mock_redis():
 
 
 @pytest.fixture(scope="function")
+def mock_path_finder():
+    """Mock PathFinderInterface for testing."""
+    mock = Mock()
+    mock.find_path.return_value = {
+        "path": ["Page A", "Page B", "Page C"],
+        "nodes_explored": 10,
+    }
+    return mock
+
+
+@pytest.fixture(scope="function")
 def mock_wikipedia_client():
     """Mock Wikipedia client for testing."""
     mock_client = Mock()
@@ -251,21 +262,6 @@ def sample_path_data():
 
 
 @pytest.fixture(scope="function")
-def sample_explore_data():
-    """Sample explore data for testing."""
-    return {
-        "start_page": "Test Page",
-        "nodes": ["Test Page", "Link 1", "Link 2", "Link 3"],
-        "edges": [
-            ("Test Page", "Link 1"),
-            ("Test Page", "Link 2"),
-            ("Test Page", "Link 3"),
-        ],
-        "total_links": 3,
-    }
-
-
-@pytest.fixture(scope="function")
 def valid_search_request():
     """Valid search request data."""
     return {
@@ -273,12 +269,6 @@ def valid_search_request():
         "end": "Machine learning",
         "algorithm": "bfs",
     }
-
-
-@pytest.fixture(scope="function")
-def valid_explore_request():
-    """Valid explore request data."""
-    return {"start": "Python (programming language)", "max_links": 10}
 
 
 @pytest.fixture(scope="function")

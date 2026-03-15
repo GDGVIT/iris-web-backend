@@ -5,7 +5,6 @@ from flask import current_app
 from app.core.pathfinding import BidirectionalBFSPathFinder, RedisBasedBFSPathFinder
 from app.core.services import (
     CacheManagementService,
-    ExploreService,
     PathFindingService,
     WikipediaService,
 )
@@ -61,11 +60,19 @@ class ServiceFactory:
             max_workers = current_app.config.get("WIKIPEDIA_MAX_WORKERS", 10)
             cache_ttl = current_app.config.get("CACHE_TTL", 86400)
             api_timeout = current_app.config.get("WIKIPEDIA_API_TIMEOUT", 15)
+            max_paginate_calls = current_app.config.get(
+                "WIKIPEDIA_MAX_PAGINATE_CALLS", 3
+            )
+            request_delay = current_app.config.get("WIKIPEDIA_REQUEST_DELAY", 0.1)
+            max_retries = current_app.config.get("WIKIPEDIA_BACKOFF_MAX_RETRIES", 5)
             cls._wikipedia_client = WikipediaClient(
                 cache_service=cache_service,
                 max_workers=max_workers,
                 cache_ttl=cache_ttl,
                 api_timeout=api_timeout,
+                max_paginate_calls=max_paginate_calls,
+                request_delay=request_delay,
+                max_retries=max_retries,
             )
             logger.info("Wikipedia client created with caching enabled")
         return cls._wikipedia_client
@@ -105,14 +112,6 @@ class ServiceFactory:
         return PathFindingService(path_finder, cache_service, wikipedia_client)
 
     @classmethod
-    def create_explore_service(cls) -> ExploreService:
-        """Create explore service."""
-        wikipedia_client = cls.get_wikipedia_client()
-        cache_service = cls.get_cache_service()
-
-        return ExploreService(wikipedia_client, cache_service)
-
-    @classmethod
     def create_wikipedia_service(cls) -> WikipediaService:
         """Create Wikipedia service."""
         wikipedia_client = cls.get_wikipedia_client()
@@ -147,11 +146,6 @@ def get_pathfinding_service(
 ) -> PathFindingService:
     """Convenience function to get pathfinding service."""
     return ServiceFactory.create_pathfinding_service(algorithm, progress_callback)
-
-
-def get_explore_service() -> ExploreService:
-    """Convenience function to get explore service."""
-    return ServiceFactory.create_explore_service()
 
 
 def get_wikipedia_service() -> WikipediaService:

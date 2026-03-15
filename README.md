@@ -20,7 +20,6 @@ It uses Redis to store the BFS state instead of holding everything in memory, wh
 - Async task processing — searches run in the background, results polled live
 - Real-time progress updates during search
 - Interactive D3.js graph visualization of the path
-- Explore page connections for arbitrary graph visualization
 - Persistent search state — page refreshes resume from where you left off
 
 ## Tech Stack
@@ -64,7 +63,6 @@ Swagger docs at [http://localhost:9020/api/docs](http://localhost:9020/api/docs)
 |--------|----------|-------------|
 | `POST` | `/getPath` | Start a pathfinding task, returns `task_id` |
 | `GET` | `/tasks/status/<id>` | Poll task status and live progress |
-| `POST` | `/explore` | Get outgoing links from a page for graph viz |
 | `GET` | `/health` | Redis + cache + Wikipedia API health check |
 | `GET` | `/api/docs` | Swagger UI |
 

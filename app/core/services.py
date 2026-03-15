@@ -1,6 +1,6 @@
 import time
 
-import networkx as nx
+from flask import current_app
 
 from app.core.interfaces import (
     CacheServiceInterface,
@@ -8,8 +8,6 @@ from app.core.interfaces import (
     WikipediaClientInterface,
 )
 from app.core.models import (
-    ExploreRequest,
-    ExploreResult,
     PathResult,
     SearchRequest,
     WikipediaPage,
@@ -84,8 +82,10 @@ class PathFindingService:
 
             # Cache the result
             self.cache_service.set(
-                cache_key, result.__dict__, ttl=3600
-            )  # Cache for 1 hour
+                cache_key,
+                result.__dict__,
+                ttl=current_app.config.get("CACHE_PATH_TTL", 3600),
+            )
 
             logger.info(
                 f"Path found: {request.start_page} -> {request.end_page} (length: {len(path)}, time: {search_time:.2f}s)"
@@ -157,102 +157,6 @@ class PathFindingService:
         return start_exists, end_exists, validation_details
 
 
-class ExploreService:
-    """Service for exploring Wikipedia page connections."""
-
-    def __init__(
-        self,
-        wikipedia_client: WikipediaClientInterface,
-        cache_service: CacheServiceInterface,
-    ):
-        self.wikipedia_client = wikipedia_client
-        self.cache_service = cache_service
-
-    def explore_page(self, request: ExploreRequest) -> ExploreResult:
-        """
-        Explore connections from a Wikipedia page.
-
-        Args:
-            request: Explore request with start page and options
-
-        Returns:
-            ExploreResult with nodes and edges for visualization
-
-        Raises:
-            InvalidPageError: When request is invalid or page doesn't exist
-        """
-        if not request.validate():
-            raise InvalidPageError("Invalid explore request")
-
-        # Check cache first
-        cache_key = f"explore:{request.start_page}:{request.max_links}"
-        cached_result = self.cache_service.get(cache_key)
-        if cached_result:
-            logger.info(f"Explore result found in cache: {request.start_page}")
-            return ExploreResult(**cached_result)
-
-        # Check if page exists
-        if not self.wikipedia_client.page_exists(request.start_page):
-            raise InvalidPageError(f"Page '{request.start_page}' does not exist")
-
-        # Get links for the page
-        try:
-            links_data = self.wikipedia_client.get_links_bulk([request.start_page])
-            all_links = links_data.get(request.start_page, [])
-
-            if not all_links:
-                logger.warning(f"No links found for page: {request.start_page}")
-                return ExploreResult(
-                    start_page=request.start_page,
-                    nodes=[request.start_page],
-                    edges=[],
-                    total_links=0,
-                )
-
-            # Limit links for visualization
-            limited_links = all_links[: request.max_links]
-
-            # Generate graph data
-            result = self._generate_explore_graph(
-                request.start_page, limited_links, len(all_links)
-            )
-
-            # Cache the result
-            self.cache_service.set(
-                cache_key, result.__dict__, ttl=1800
-            )  # Cache for 30 minutes
-
-            logger.info(
-                f"Explore completed: {request.start_page} ({len(limited_links)} links shown)"
-            )
-            return result
-
-        except Exception as e:
-            logger.error(f"Explore failed for {request.start_page}: {e}")
-            raise
-
-    def _generate_explore_graph(
-        self, start_page: str, links: list[str], total_links: int
-    ) -> ExploreResult:
-        """Generate graph data for visualization."""
-        # Create graph
-        G = nx.Graph()
-        G.add_node(start_page)
-
-        nodes = [start_page]
-        edges = []
-
-        for link in links:
-            G.add_node(link)
-            G.add_edge(start_page, link)
-            nodes.append(link)
-            edges.append((start_page, link))
-
-        return ExploreResult(
-            start_page=start_page, nodes=nodes, edges=edges, total_links=total_links
-        )
-
-
 class WikipediaService:
     """Service for Wikipedia page operations."""
 
@@ -287,15 +191,13 @@ class WikipediaService:
         )
 
         # Cache the result
-        self.cache_service.set(cache_key, page.__dict__, ttl=7200)  # Cache for 2 hours
+        self.cache_service.set(
+            cache_key,
+            page.__dict__,
+            ttl=current_app.config.get("CACHE_PAGE_TTL", 7200),
+        )
 
         return page
-
-    def search_pages(self, query: str, limit: int = 10) -> list[str]:
-        """Search for Wikipedia pages by title."""
-        # This would implement Wikipedia search API
-        # For now, return empty list as it's not in the original scope
-        return []
 
 
 class CacheManagementService:

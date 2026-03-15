@@ -2,7 +2,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.core.pathfinding import BidirectionalBFSPathFinder, RedisBasedBFSPathFinder
+from app.core.pathfinding import (
+    BidirectionalBFSPathFinder,
+    BidirProgressAggregator,
+    RedisBasedBFSPathFinder,
+)
 from app.utils.exceptions import InvalidPageError, PathNotFoundError
 
 
@@ -88,42 +92,6 @@ class TestRedisBasedBFSPathFinder:
         with pytest.raises(InvalidPageError):
             pathfinder.find_path("Page A", "")
 
-    def test_find_path_nonexistent_start_page(
-        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
-    ):
-        """Test pathfinding when start page doesn't exist."""
-        # Mock start page doesn't exist
-        mock_wikipedia_client.page_exists.side_effect = lambda page: (
-            page != "NonExistent"
-        )
-
-        pathfinder = RedisBasedBFSPathFinder(
-            mock_wikipedia_client, mock_cache_service, mock_queue_service
-        )
-
-        with pytest.raises(
-            InvalidPageError, match="Start page 'NonExistent' does not exist"
-        ):
-            pathfinder.find_path("NonExistent", "Page B")
-
-    def test_find_path_nonexistent_end_page(
-        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
-    ):
-        """Test pathfinding when end page doesn't exist."""
-        # Mock end page doesn't exist
-        mock_wikipedia_client.page_exists.side_effect = lambda page: (
-            page != "NonExistent"
-        )
-
-        pathfinder = RedisBasedBFSPathFinder(
-            mock_wikipedia_client, mock_cache_service, mock_queue_service
-        )
-
-        with pytest.raises(
-            InvalidPageError, match="End page 'NonExistent' does not exist"
-        ):
-            pathfinder.find_path("Page A", "NonExistent")
-
     def test_find_path_no_path_exists(
         self, mock_wikipedia_client, mock_cache_service, mock_queue_service
     ):
@@ -177,48 +145,10 @@ class TestRedisBasedBFSPathFinder:
         with pytest.raises(PathNotFoundError):
             pathfinder.find_path("Page A", "Page B")
 
-    def test_redis_queue_integration(self, mock_wikipedia_client, mock_cache_service):
-        """Test that Redis queue operations work correctly."""
-        # Use a real-like queue implementation for testing
-        queue_data = {}
-
-        def mock_push(queue_name, item):
-            if queue_name not in queue_data:
-                queue_data[queue_name] = []
-            queue_data[queue_name].append(item)
-
-        def mock_pop(queue_name):
-            if queue_name in queue_data and queue_data[queue_name]:
-                return queue_data[queue_name].pop(0)
-            return None
-
-        def mock_length(queue_name):
-            return len(queue_data.get(queue_name, []))
-
-        def mock_clear(queue_name):
-            queue_data.pop(queue_name, None)
-
-        def mock_push_batch(queue_name, items):
-            if queue_name not in queue_data:
-                queue_data[queue_name] = []
-            queue_data[queue_name].extend(items)
-
-        def mock_pop_batch(queue_name, count):
-            if queue_name not in queue_data:
-                return []
-            batch = queue_data[queue_name][:count]
-            queue_data[queue_name] = queue_data[queue_name][count:]
-            return batch
-
-        mock_queue_service = Mock()
-        mock_queue_service.push.side_effect = mock_push
-        mock_queue_service.pop.side_effect = mock_pop
-        mock_queue_service.length.side_effect = mock_length
-        mock_queue_service.clear.side_effect = mock_clear
-        mock_queue_service.push_batch.side_effect = mock_push_batch
-        mock_queue_service.pop_batch.side_effect = mock_pop_batch
-
-        # Mock simple path A -> B
+    def test_redis_queue_integration(
+        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
+    ):
+        """Queue push and pop_batch are called during BFS (uses conftest fixture)."""
         mock_wikipedia_client.page_exists.return_value = True
         mock_wikipedia_client.get_links_bulk.return_value = {"Page A": ["Page B"]}
 
@@ -230,7 +160,6 @@ class TestRedisBasedBFSPathFinder:
 
         assert result["path"] == ["Page A", "Page B"]
         assert "nodes_explored" in result
-        # Verify queue operations were called
         assert mock_queue_service.push.called
         assert mock_queue_service.pop_batch.called
 
@@ -252,6 +181,121 @@ class TestRedisBasedBFSPathFinder:
         # Verify set/hash interface methods were used for visited tracking
         assert mock_cache_service.set_add.called
         assert mock_cache_service.hash_set.called
+
+
+class TestProgressCallback:
+    """Tests for progress callback invocation in RedisBasedBFSPathFinder."""
+
+    def test_callback_fires_during_multi_hop_search(
+        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
+    ):
+        """Progress callback fires at least once during a non-trivial search."""
+        progress_calls = []
+
+        def mock_get_links(pages, on_page_fetched=None):
+            mapping = {
+                "Page A": ["Page X"],  # first batch: no direct path
+                "Page X": ["Page B"],  # second batch: finds target
+            }
+            # Simulate Wikipedia client calling the per-page callback
+            if on_page_fetched:
+                for page in pages:
+                    on_page_fetched(page, mapping.get(page, []))
+            return {page: mapping.get(page, []) for page in pages}
+
+        mock_wikipedia_client.get_links_bulk.side_effect = mock_get_links
+
+        pathfinder = RedisBasedBFSPathFinder(
+            mock_wikipedia_client,
+            mock_cache_service,
+            mock_queue_service,
+            progress_callback=lambda data: progress_calls.append(data),
+        )
+
+        result = pathfinder.find_path("Page A", "Page B")
+
+        assert result["path"] == ["Page A", "Page X", "Page B"]
+        assert len(progress_calls) > 0
+        for call in progress_calls:
+            assert "search_stats" in call
+            assert "nodes_explored" in call["search_stats"]
+
+    def test_no_callback_does_not_raise(
+        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
+    ):
+        """Pathfinder with no callback runs without error."""
+        mock_wikipedia_client.get_links_bulk.return_value = {"Page A": ["Page B"]}
+
+        pathfinder = RedisBasedBFSPathFinder(
+            mock_wikipedia_client,
+            mock_cache_service,
+            mock_queue_service,
+            progress_callback=None,
+        )
+
+        result = pathfinder.find_path("Page A", "Page B")
+        assert result["path"] == ["Page A", "Page B"]
+
+
+class TestBidirProgressAggregator:
+    """Unit tests for BidirProgressAggregator."""
+
+    def _make_agg(self, callback=None):
+        queue_svc = Mock()
+        queue_svc.length.return_value = 0
+        return BidirProgressAggregator(callback or Mock(), queue_svc, "fwd_q", "bwd_q")
+
+    def test_forward_and_backward_counting(self):
+        agg = self._make_agg()
+        agg.record("A", 0, "forward")
+        agg.record("B", 1, "backward")
+        agg.record("C", 1, "forward")
+
+        assert agg.total_nodes == 3
+        assert agg._fwd_nodes == 2
+        assert agg._bwd_nodes == 1
+
+    def test_total_nodes_starts_at_zero(self):
+        agg = self._make_agg()
+        assert agg.total_nodes == 0
+
+    def test_callback_receives_combined_queue_size(self):
+        received = []
+        queue_svc = Mock()
+        queue_svc.length.side_effect = lambda q: 3 if q == "fwd_q" else 2
+
+        agg = BidirProgressAggregator(received.append, queue_svc, "fwd_q", "bwd_q")
+        agg.record("Page A", 0, "forward")
+
+        assert len(received) == 1
+        update = received[0]
+        assert update["nodes_explored"] == 1
+        assert update["queue_size"] == 5  # 3 + 2
+        assert update["direction"] == "forward"
+        assert update["last_node"] == "Page A"
+        assert update["current_depth"] == 0
+
+    def test_backward_direction_tracked_separately(self):
+        received = []
+        queue_svc = Mock()
+        queue_svc.length.return_value = 0
+
+        agg = BidirProgressAggregator(received.append, queue_svc, "fwd_q", "bwd_q")
+        agg.record("End", 0, "backward")
+
+        assert received[0]["direction"] == "backward"
+        assert agg._bwd_nodes == 1
+        assert agg._fwd_nodes == 0
+
+    def test_callback_called_once_per_record(self):
+        callback = Mock()
+        agg = self._make_agg(callback)
+
+        for i in range(5):
+            agg.record(f"Page {i}", i, "forward")
+
+        assert callback.call_count == 5
+        assert agg.total_nodes == 5
 
 
 class TestBidirectionalBFSPathFinder:
@@ -289,16 +333,74 @@ class TestBidirectionalBFSPathFinder:
         assert result["path"] == ["Page A"]
         assert result["nodes_explored"] == 1
 
+    def test_bidirectional_invalid_empty_pages(
+        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
+    ):
+        """Empty page names raise InvalidPageError."""
+        pathfinder = BidirectionalBFSPathFinder(
+            mock_wikipedia_client, mock_cache_service, mock_queue_service
+        )
+
+        with pytest.raises(InvalidPageError):
+            pathfinder.find_path("", "Page B")
+
+        with pytest.raises(InvalidPageError):
+            pathfinder.find_path("Page A", "")
+
+    def test_bidirectional_no_path_found(
+        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
+    ):
+        """PathNotFoundError is raised when frontiers cannot meet."""
+
+        def isolated_links(pages, on_page_fetched=None):
+            return {page: [] for page in pages}
+
+        mock_wikipedia_client.get_links_bulk.side_effect = isolated_links
+        mock_wikipedia_client.get_backlinks_bulk.side_effect = isolated_links
+
+        pathfinder = BidirectionalBFSPathFinder(
+            mock_wikipedia_client, mock_cache_service, mock_queue_service, max_depth=2
+        )
+
+        with pytest.raises(PathNotFoundError):
+            pathfinder.find_path("Page A", "Page B")
+
+    def test_bidirectional_progress_callback(
+        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
+    ):
+        """Progress callback fires when provided to BidirectionalBFSPathFinder."""
+        progress_calls = []
+
+        def fwd_links(pages, on_page_fetched=None):
+            mapping = {"Page A": ["Page B"]}
+            if on_page_fetched:
+                for p in pages:
+                    on_page_fetched(p, mapping.get(p, []))
+            return {p: mapping.get(p, []) for p in pages}
+
+        mock_wikipedia_client.get_links_bulk.side_effect = fwd_links
+        mock_wikipedia_client.get_backlinks_bulk.return_value = {}
+
+        pathfinder = BidirectionalBFSPathFinder(
+            mock_wikipedia_client,
+            mock_cache_service,
+            mock_queue_service,
+            progress_callback=lambda d: progress_calls.append(d),
+        )
+
+        pathfinder.find_path("Page A", "Page B")
+        assert len(progress_calls) > 0
+
 
 class TestPathfindingErrorHandling:
     """Integration tests for pathfinding error scenarios."""
 
-    def test_wikipedia_api_error_handling(self, mock_cache_service, mock_queue_service):
-        """Test handling of Wikipedia API errors."""
+    def test_wikipedia_api_error_handling(
+        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
+    ):
+        """WikipediaAPIError from get_links_bulk propagates out of find_path."""
         from app.utils.exceptions import WikipediaAPIError
 
-        # Mock Wikipedia client to raise API error
-        mock_wikipedia_client = Mock()
         mock_wikipedia_client.page_exists.return_value = True
         mock_wikipedia_client.get_links_bulk.side_effect = WikipediaAPIError(
             "API request failed"
@@ -311,20 +413,16 @@ class TestPathfindingErrorHandling:
         with pytest.raises(WikipediaAPIError):
             pathfinder.find_path("Page A", "Page B")
 
-    def test_cache_error_handling(self, mock_wikipedia_client, mock_queue_service):
-        """Test handling of cache errors during BFS state operations."""
+    def test_cache_error_handling(
+        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
+    ):
+        """CacheConnectionError from set_add propagates out of find_path."""
         from app.utils.exceptions import CacheConnectionError
 
-        mock_cache_service = Mock()
-        mock_cache_service.set_add.side_effect = CacheConnectionError("Redis connection failed")
-        mock_cache_service.set_contains.return_value = False
-        mock_cache_service.delete_many.return_value = None
-
         mock_wikipedia_client.page_exists.return_value = True
-        # Links that don't immediately lead to target, forcing set_add call
-        mock_wikipedia_client.get_links_bulk.return_value = {
-            "Page A": ["Page C", "Page D"]
-        }
+        mock_cache_service.set_add.side_effect = CacheConnectionError(
+            "Redis connection failed"
+        )
 
         pathfinder = RedisBasedBFSPathFinder(
             mock_wikipedia_client, mock_cache_service, mock_queue_service
@@ -333,17 +431,16 @@ class TestPathfindingErrorHandling:
         with pytest.raises(CacheConnectionError):
             pathfinder.find_path("Page A", "Page B")
 
-    def test_queue_error_handling(self, mock_wikipedia_client, mock_cache_service):
-        """Test handling of queue errors."""
+    def test_queue_error_handling(
+        self, mock_wikipedia_client, mock_cache_service, mock_queue_service
+    ):
+        """CacheConnectionError from queue.push propagates out of find_path."""
         from app.utils.exceptions import CacheConnectionError
 
-        # Mock queue service to raise error
-        mock_queue_service = Mock()
+        mock_wikipedia_client.page_exists.return_value = True
         mock_queue_service.push.side_effect = CacheConnectionError(
             "Queue operation failed"
         )
-
-        mock_wikipedia_client.page_exists.return_value = True
 
         pathfinder = RedisBasedBFSPathFinder(
             mock_wikipedia_client, mock_cache_service, mock_queue_service

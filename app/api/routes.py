@@ -2,18 +2,15 @@ import os
 
 from flask import Blueprint, jsonify, redirect, request, send_from_directory, url_for
 
+from app import celery
 from app.api.middleware import api_endpoint
 from app.api.schemas import (
-    ExploreRequestSchema,
-    ExploreResultSchema,
     SearchRequestSchema,
-    serialize_response,
     validate_request_data,
 )
 from app.core.factory import (
     ServiceFactory,
     get_cache_management_service,
-    get_explore_service,
 )
 from app.infrastructure.tasks import find_path_task
 from app.utils.logging import get_logger
@@ -189,52 +186,6 @@ def get_task_status_route(task_id):
     return jsonify(response_data)
 
 
-@main.route("/explore", methods=["POST"])
-@api_endpoint()
-def explore_route():
-    """Fetch outgoing links from a Wikipedia page for graph visualization.
-    ---
-    tags:
-      - Exploration
-    summary: Explore page connections
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - start_page
-          properties:
-            start_page:
-              type: string
-              example: "Python (programming language)"
-            max_links:
-              type: integer
-              default: 10
-              description: Maximum number of links to return
-    responses:
-      200:
-        description: Page connections for visualization
-      400:
-        description: Validation error
-      404:
-        description: Page not found
-    """
-    explore_request = validate_request_data(ExploreRequestSchema, request.get_json())
-
-    logger.info(
-        f"Explore request: {explore_request.start_page} (max_links: {explore_request.max_links})"
-    )
-
-    explore_service = get_explore_service()
-    result = explore_service.explore_page(explore_request)
-
-    response_data = serialize_response(ExploreResultSchema, result)
-
-    return jsonify(response_data), 200
-
-
 @main.route("/health", methods=["GET"])
 @api_endpoint(require_json_content=False, log_request=False)
 def health_check():
@@ -336,6 +287,177 @@ def clear_cache():
         raise
 
 
+@main.route("/tasks", methods=["GET"])
+@api_endpoint(require_json_content=False)
+def list_tasks():
+    """List all active, reserved, and scheduled Celery tasks across all workers.
+    ---
+    tags:
+      - Tasks
+    summary: List tasks
+    responses:
+      200:
+        description: Current task queues across all workers
+        schema:
+          type: object
+          properties:
+            active:
+              type: object
+              description: Tasks currently being executed, keyed by worker name
+            reserved:
+              type: object
+              description: Tasks claimed by workers but not yet executing
+            scheduled:
+              type: object
+              description: Tasks scheduled for future execution (ETA/countdown)
+            total_active:
+              type: integer
+            total_reserved:
+              type: integer
+      503:
+        description: Could not reach Celery workers
+    """
+    try:
+        inspect = celery.control.inspect(timeout=2.0)
+        active = inspect.active() or {}
+        reserved = inspect.reserved() or {}
+        scheduled = inspect.scheduled() or {}
+
+        total_active = sum(len(tasks) for tasks in active.values())
+        total_reserved = sum(len(tasks) for tasks in reserved.values())
+
+        return jsonify(
+            {
+                "active": active,
+                "reserved": reserved,
+                "scheduled": scheduled,
+                "total_active": total_active,
+                "total_reserved": total_reserved,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to inspect Celery workers: {e}")
+        return jsonify(
+            {"error": "Could not reach Celery workers", "detail": str(e)}
+        ), 503
+
+
+@main.route("/tasks/<task_id>", methods=["DELETE"])
+@api_endpoint(require_json_content=False)
+def cancel_task(task_id):
+    """Revoke a task, preventing it from running or terminating it if already running.
+    ---
+    tags:
+      - Tasks
+    summary: Cancel task
+    parameters:
+      - name: task_id
+        in: path
+        required: true
+        type: string
+        description: Celery task ID to cancel
+      - name: terminate
+        in: query
+        type: boolean
+        default: true
+        description: Send SIGTERM to the worker process if the task is already running
+    responses:
+      200:
+        description: Task revoked
+        schema:
+          type: object
+          properties:
+            revoked:
+              type: boolean
+            task_id:
+              type: string
+            terminated:
+              type: boolean
+      404:
+        description: Task not found or already completed
+    """
+    terminate = request.args.get("terminate", "true").lower() != "false"
+
+    # Check current state before revoking
+    task = find_path_task.AsyncResult(task_id)  # type: ignore[attr-defined]
+    if task.state in ("SUCCESS", "FAILURE"):
+        return jsonify(
+            {
+                "revoked": False,
+                "task_id": task_id,
+                "reason": f"Task already in terminal state: {task.state}",
+            }
+        ), 404
+
+    celery.control.revoke(task_id, terminate=terminate, signal="SIGTERM")
+    logger.info(f"Revoked task {task_id} (terminate={terminate})")
+
+    return jsonify({"revoked": True, "task_id": task_id, "terminated": terminate})
+
+
+@main.route("/tasks", methods=["DELETE"])
+@api_endpoint(require_json_content=False)
+def cancel_all_tasks():
+    """Revoke all active and reserved tasks across all workers.
+    ---
+    tags:
+      - Tasks
+    summary: Cancel all tasks
+    parameters:
+      - name: terminate
+        in: query
+        type: boolean
+        default: true
+        description: Send SIGTERM to worker processes for tasks already running
+    responses:
+      200:
+        description: All tasks revoked
+        schema:
+          type: object
+          properties:
+            revoked_count:
+              type: integer
+            task_ids:
+              type: array
+              items:
+                type: string
+            terminated:
+              type: boolean
+      503:
+        description: Could not reach Celery workers
+    """
+    terminate = request.args.get("terminate", "true").lower() != "false"
+
+    try:
+        inspect = celery.control.inspect(timeout=2.0)
+        active = inspect.active() or {}
+        reserved = inspect.reserved() or {}
+
+        task_ids = []
+        for tasks in active.values():
+            task_ids.extend(t["id"] for t in tasks)
+        for tasks in reserved.values():
+            task_ids.extend(t["id"] for t in tasks)
+
+        for task_id in task_ids:
+            celery.control.revoke(task_id, terminate=terminate, signal="SIGTERM")
+
+        logger.info(f"Revoked {len(task_ids)} tasks (terminate={terminate})")
+
+        return jsonify(
+            {
+                "revoked_count": len(task_ids),
+                "task_ids": task_ids,
+                "terminated": terminate,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to cancel all tasks: {e}")
+        return jsonify(
+            {"error": "Could not reach Celery workers", "detail": str(e)}
+        ), 503
+
+
 @main.route("/")
 @api_endpoint(require_json_content=False, log_request=False)
 def index():
@@ -383,7 +505,9 @@ def api_info():
         "endpoints": {
             "POST /getPath": "Start pathfinding between two pages",
             "GET /tasks/status/<task_id>": "Check task status",
-            "POST /explore": "Explore page connections",
+            "GET /tasks": "List active/reserved/scheduled tasks",
+            "DELETE /tasks/<task_id>": "Cancel a specific task",
+            "DELETE /tasks": "Cancel all active tasks",
             "GET /health": "Health check",
             "GET /": "Path visualization UI",
             "GET /api": "API information",
@@ -397,7 +521,7 @@ def api_info():
 @main.route("/<path:path>")
 def catch_all(path):
     """Redirect all non-API paths to main UI."""
-    api_paths = ["getPath", "tasks", "explore", "health", "cache", "api"]
+    api_paths = ["getPath", "tasks", "health", "cache", "api"]
 
     if any(path.startswith(api_path) for api_path in api_paths):
         response_data = {
@@ -408,42 +532,3 @@ def catch_all(path):
         return jsonify(response_data), 404
 
     return redirect(url_for("main.index"))
-
-
-@main.errorhandler(404)
-def not_found(error):
-    """Handle 404 errors."""
-    return jsonify(
-        {"error": True, "message": "Endpoint not found", "code": "NOT_FOUND"}
-    ), 404
-
-
-@main.errorhandler(405)
-def method_not_allowed(error):
-    """Handle 405 errors."""
-    return (
-        jsonify(
-            {
-                "error": True,
-                "message": "Method not allowed",
-                "code": "METHOD_NOT_ALLOWED",
-            }
-        ),
-        405,
-    )
-
-
-@main.errorhandler(500)
-def internal_error(error):
-    """Handle 500 errors."""
-    logger.error(f"Internal server error: {error}")
-    return (
-        jsonify(
-            {
-                "error": True,
-                "message": "Internal server error",
-                "code": "INTERNAL_ERROR",
-            }
-        ),
-        500,
-    )

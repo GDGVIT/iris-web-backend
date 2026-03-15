@@ -168,18 +168,50 @@ class TestFindPathTask:
 
     def test_retryable_error_max_retries_exceeded(self, app):
         with app.app_context():
+            from app.infrastructure.tasks import find_path_task
             from app.utils.exceptions import WikipediaAPIError
 
-            # When retries == max_retries, no retry is attempted — returns FAILURE
-            result = _apply(
-                svc=_build_service(find_path_raises=WikipediaAPIError("timeout"))
-            )
-            # With task_eager_propagates=False and retries exhausted or re-raised,
-            # we get either FAILURE or the retry behaviour; either way status != SUCCESS
-            assert result is not None
+            svc = _build_service(find_path_raises=WikipediaAPIError("timeout"))
+            with patch(
+                "app.infrastructure.tasks.get_pathfinding_service", return_value=svc
+            ):
+                # Eager retries run synchronously; after max_retries the task
+                # returns the MAX_RETRIES_EXCEEDED failure dict.
+                result = find_path_task.apply(args=["A", "B", "bfs"], retries=3).result  # type: ignore[attr-defined]
+            assert result["status"] == "FAILURE"
+            assert result["code"] == "MAX_RETRIES_EXCEEDED"
+
+    def test_progress_callback_is_passed_to_service(self, app):
+        with app.app_context():
+            svc = _build_service(path=["A", "B"])
+            with patch(
+                "app.infrastructure.tasks.get_pathfinding_service", return_value=svc
+            ) as mock_get:
+                from app.infrastructure.tasks import find_path_task
+
+                find_path_task.apply(args=["A", "B", "bfs"])  # type: ignore[attr-defined]
+
+            _algo, callback = mock_get.call_args[0]
+            assert callable(callback)
 
 
 class TestHealthCheckTask:
+    def test_ping_failure_returns_failure(self, app):
+        with app.app_context():
+            mock_cache = Mock()
+            mock_cache.ping.return_value = False  # Redis unreachable
+
+            with patch(
+                "app.core.factory.ServiceFactory.get_cache_service",
+                return_value=mock_cache,
+            ):
+                from app.infrastructure.tasks import health_check_task
+
+                result = health_check_task.apply().result  # type: ignore[attr-defined]
+
+            assert result["status"] == "FAILURE"
+            assert "Redis ping failed" in result["error"]
+
     def test_success(self, app):
         with app.app_context():
             mock_redis = Mock()
@@ -256,6 +288,21 @@ class TestCacheCleanupTask:
             assert result["status"] == "SUCCESS"
             assert result["cleared_count"] == 7
             assert result["pattern"] == "bfs_*"
+
+    def test_default_pattern(self, app):
+        with app.app_context():
+            mock_mgmt = Mock()
+            mock_mgmt.clear_cache_pattern.return_value = 0
+
+            with patch(
+                "app.core.factory.get_cache_management_service", return_value=mock_mgmt
+            ):
+                from app.infrastructure.tasks import cache_cleanup_task
+
+                result = cache_cleanup_task.apply().result  # type: ignore[attr-defined]
+
+            assert result["pattern"] == "bfs_*"
+            mock_mgmt.clear_cache_pattern.assert_called_once_with("bfs_*")
 
     def test_failure(self, app):
         with app.app_context():
