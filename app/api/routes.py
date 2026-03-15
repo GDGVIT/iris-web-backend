@@ -250,16 +250,14 @@ def health_check():
         description: One or more systems degraded
     """
     try:
+        cache_service = ServiceFactory.get_cache_service()
+
         redis_status = "healthy"
-        try:
-            redis_client = ServiceFactory.get_redis_client()
-            redis_client.ping()
-        except Exception as e:
-            redis_status = f"unhealthy: {e}"
+        if not cache_service.ping():
+            redis_status = "unhealthy: ping failed"
 
         cache_status = "healthy"
         try:
-            cache_service = ServiceFactory.get_cache_service()
             cache_service.set("health_check", "ok", ttl=60)
             cache_value = cache_service.get("health_check")
             if cache_value != "ok":

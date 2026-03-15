@@ -176,17 +176,12 @@ class TestExploreAPI:
 class TestHealthCheckAPI:
     """Integration tests for health check endpoint."""
 
-    @patch("app.core.factory.ServiceFactory.get_redis_client")
     @patch("app.core.factory.ServiceFactory.get_cache_service")
     @patch("app.core.factory.ServiceFactory.get_wikipedia_client")
-    def test_health_check_healthy(self, mock_wikipedia, mock_cache, mock_redis, client):
+    def test_health_check_healthy(self, mock_wikipedia, mock_cache, client):
         """Test health check when all services are healthy."""
-        # Mock healthy services
-        mock_redis_client = Mock()
-        mock_redis_client.ping.return_value = True
-        mock_redis.return_value = mock_redis_client
-
         mock_cache_service = Mock()
+        mock_cache_service.ping.return_value = True
         mock_cache_service.set.return_value = None
         mock_cache_service.get.return_value = "ok"
         mock_cache.return_value = mock_cache_service
@@ -203,11 +198,14 @@ class TestHealthCheckAPI:
         assert data["cache_status"] == "healthy"
         assert data["wikipedia_api_status"] == "healthy"
 
-    @patch("app.core.factory.ServiceFactory.get_redis_client")
-    def test_health_check_redis_unhealthy(self, mock_redis, client):
+    @patch("app.core.factory.ServiceFactory.get_cache_service")
+    def test_health_check_redis_unhealthy(self, mock_cache, client):
         """Test health check when Redis is unhealthy."""
-        # Mock unhealthy Redis
-        mock_redis.side_effect = Exception("Redis connection failed")
+        mock_cache_service = Mock()
+        mock_cache_service.ping.return_value = False
+        mock_cache_service.set.return_value = None
+        mock_cache_service.get.return_value = "ok"
+        mock_cache.return_value = mock_cache_service
 
         response = client.get("/health")
 

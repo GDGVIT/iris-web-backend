@@ -88,12 +88,15 @@ class WikipediaClient(WikipediaClientInterface):
 
             # Read pagination config here (app context available), bind to fetch_fn
             # so threads don't need to access current_app themselves.
-            max_paginate_calls = current_app.config.get("WIKIPEDIA_MAX_PAGINATE_CALLS", 10)
+            max_paginate_calls = current_app.config.get(
+                "WIKIPEDIA_MAX_PAGINATE_CALLS", 10
+            )
             bound_fetch = partial(fetch_fn, max_paginate_calls=max_paginate_calls)
 
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 future_to_title = {
-                    executor.submit(bound_fetch, title): title for title in uncached_titles
+                    executor.submit(bound_fetch, title): title
+                    for title in uncached_titles
                 }
                 for future in as_completed(future_to_title):
                     title = future_to_title[future]
@@ -164,7 +167,9 @@ class WikipediaClient(WikipediaClientInterface):
             on_page_fetched,
         )
 
-    def _fetch_single_page(self, title: str, max_paginate_calls: int = 10) -> dict[str, list[str]]:
+    def _fetch_single_page(
+        self, title: str, max_paginate_calls: int = 10
+    ) -> dict[str, list[str]]:
         """Fetch links for a single Wikipedia page with plcontinue pagination."""
         params: dict[str, str | int] = {
             "action": "query",
@@ -199,7 +204,9 @@ class WikipediaClient(WikipediaClientInterface):
 
         return {title: all_links}
 
-    def _fetch_backlinks_single_page(self, title: str, max_paginate_calls: int = 10) -> dict[str, list[str]]:
+    def _fetch_backlinks_single_page(
+        self, title: str, max_paginate_calls: int = 10
+    ) -> dict[str, list[str]]:
         """Fetch backlinks for a single Wikipedia page with blcontinue pagination.
 
         Uses ``list=backlinks`` which returns pages that link *to* ``title``.

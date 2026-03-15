@@ -114,96 +114,49 @@ def mock_cache_service():
     mock_cache.set.side_effect = mock_set
     mock_cache.exists.side_effect = mock_exists
     mock_cache.delete.side_effect = mock_delete
+    mock_cache.ping.return_value = True
 
-    # Provide a mock redis_client used by pathfinders for SET/Hash operations.
-    # Use in-memory sets and dicts so BFS logic works correctly in tests.
-    visited_sets: dict = {}
-    parent_hashes: dict = {}
+    # In-memory backing stores for set/hash operations
+    _sets: dict[str, set] = {}
+    _hashes: dict[str, dict] = {}
 
-    mock_redis = Mock()
+    def mock_delete_many(keys):
+        for k in keys:
+            _sets.pop(k, None)
+            _hashes.pop(k, None)
+            cache_data.pop(k, None)
 
-    # SADD: add member to a set, return number added
-    def _sadd(key, *members):
-        if key not in visited_sets:
-            visited_sets[key] = set()
-        before = len(visited_sets[key])
-        visited_sets[key].update(members)
-        return len(visited_sets[key]) - before
+    def mock_set_add(key, value):
+        _sets.setdefault(key, set()).add(value)
 
-    # SISMEMBER: check membership
-    def _sismember(key, member):
-        return member in visited_sets.get(key, set())
+    def mock_set_add_many(key, values):
+        s = _sets.setdefault(key, set())
+        s.update(values)
 
-    # HSET: set a field in a hash
-    def _hset(key, field, value):
-        if key not in parent_hashes:
-            parent_hashes[key] = {}
-        parent_hashes[key][field] = value
-        return 1
+    def mock_set_contains(key, value):
+        return value in _sets.get(key, set())
 
-    # HGET: get a field from a hash
-    def _hget(key, field):
-        return parent_hashes.get(key, {}).get(field)
+    def mock_set_contains_many(key, values):
+        s = _sets.get(key, set())
+        return [v in s for v in values]
 
-    # DELETE: remove keys
-    def _delete(*keys):
-        for key in keys:
-            visited_sets.pop(key, None)
-            parent_hashes.pop(key, None)
-        return len(keys)
+    def mock_hash_set(key, field, value):
+        _hashes.setdefault(key, {})[field] = value
 
-    mock_redis.sadd.side_effect = _sadd
-    mock_redis.sismember.side_effect = _sismember
-    mock_redis.hset.side_effect = _hset
-    mock_redis.hget.side_effect = _hget
-    mock_redis.delete.side_effect = _delete
+    def mock_hash_set_many(key, mapping):
+        _hashes.setdefault(key, {}).update(mapping)
 
-    # Pipeline support: collect commands and execute them all at once
-    class MockPipeline:
-        def __init__(self):
-            self._commands = []
+    def mock_hash_get(key, field):
+        return _hashes.get(key, {}).get(field)
 
-        def sadd(self, key, *members):
-            self._commands.append(("sadd", key, members))
-            return self
-
-        def sismember(self, key, member):
-            self._commands.append(("sismember", key, member))
-            return self
-
-        def hset(self, key, field, value):
-            self._commands.append(("hset", key, field, value))
-            return self
-
-        def delete(self, *keys):
-            self._commands.append(("delete", keys))
-            return self
-
-        def execute(self):
-            results = []
-            for cmd in self._commands:
-                if cmd[0] == "sadd":
-                    results.append(_sadd(cmd[1], *cmd[2]))
-                elif cmd[0] == "sismember":
-                    results.append(_sismember(cmd[1], cmd[2]))
-                elif cmd[0] == "hset":
-                    results.append(_hset(cmd[1], cmd[2], cmd[3]))
-                elif cmd[0] == "delete":
-                    results.append(_delete(*cmd[1]))
-                else:
-                    results.append(None)
-            self._commands = []
-            return results
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-    mock_redis.pipeline.side_effect = lambda: MockPipeline()
-
-    mock_cache.redis_client = mock_redis
+    mock_cache.delete_many.side_effect = mock_delete_many
+    mock_cache.set_add.side_effect = mock_set_add
+    mock_cache.set_add_many.side_effect = mock_set_add_many
+    mock_cache.set_contains.side_effect = mock_set_contains
+    mock_cache.set_contains_many.side_effect = mock_set_contains_many
+    mock_cache.hash_set.side_effect = mock_hash_set
+    mock_cache.hash_set_many.side_effect = mock_hash_set_many
+    mock_cache.hash_get.side_effect = mock_hash_get
 
     return mock_cache
 

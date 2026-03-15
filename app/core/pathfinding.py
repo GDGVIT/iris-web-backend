@@ -42,7 +42,6 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         self.max_depth = max_depth
         self.batch_size = batch_size
         self.progress_callback = progress_callback
-        self.redis = cache_service.redis_client  # type: ignore[attr-defined]
 
     def find_path(self, start_page: str, end_page: str) -> dict[str, Any]:
         """
@@ -107,7 +106,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
 
         # Initialize search state
         self.queue_service.push(queue_key, {"page": start_page, "depth": 0})
-        self.redis.sadd(visited_key, start_page)
+        self.cache_service.set_add(visited_key, start_page)
 
         nodes_explored = 0
         nodes_lock = threading.Lock()
@@ -197,7 +196,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
 
                 for link in links:
                     if link == end_page:
-                        self.redis.hset(parent_key, link, current_page)
+                        self.cache_service.hash_set(parent_key, link, current_page)
                         final_path = self._reconstruct_path(end_page, parent_key)
                         logger.info(
                             f"Path found! Length: {len(final_path)}, explored {nodes_explored} nodes"
@@ -205,10 +204,10 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                         return {"path": final_path, "nodes_explored": nodes_explored}
 
                     try:
-                        if self.redis.sismember(visited_key, link):
+                        if self.cache_service.set_contains(visited_key, link):
                             continue
-                        self.redis.sadd(visited_key, link)
-                        self.redis.hset(parent_key, link, current_page)
+                        self.cache_service.set_add(visited_key, link)
+                        self.cache_service.hash_set(parent_key, link, current_page)
                         self.queue_service.push(
                             queue_key, {"page": link, "depth": item["depth"] + 1}
                         )
@@ -249,10 +248,10 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         """Reconstruct the path from start to node via the parent hash."""
         path = [node]
         while True:
-            parent = self.redis.hget(parent_hash_key, path[-1])
+            parent = self.cache_service.hash_get(parent_hash_key, path[-1])
             if parent is None:
                 break
-            path.append(parent.decode() if isinstance(parent, bytes) else parent)
+            path.append(parent)
         path.reverse()
         return path
 
@@ -261,11 +260,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
     ) -> None:
         """Clean up Redis keys used during search."""
         try:
-            with self.redis.pipeline() as pipe:
-                pipe.delete(queue_key)
-                pipe.delete(visited_key)
-                pipe.delete(parent_key)
-                pipe.execute()
+            self.cache_service.delete_many([queue_key, visited_key, parent_key])
             logger.info("Search state cleanup completed")
         except Exception as e:
             logger.error(f"Failed to cleanup search state: {e}")
@@ -343,7 +338,6 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         self.max_depth = max_depth
         self.batch_size = batch_size
         self.progress_callback = progress_callback
-        self.redis = cache_service.redis_client  # type: ignore[attr-defined]
 
     def find_path(self, start_page: str, end_page: str) -> dict[str, Any]:
         """
@@ -388,8 +382,8 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         )
 
         try:
-            self.redis.sadd(fwd_vis, start_page)
-            self.redis.sadd(bwd_vis, end_page)
+            self.cache_service.set_add(fwd_vis, start_page)
+            self.cache_service.set_add(bwd_vis, end_page)
             self.queue_service.push(fwd_q, {"page": start_page, "depth": 0})
             self.queue_service.push(bwd_q, {"page": end_page, "depth": 0})
 
@@ -411,10 +405,7 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
             )
             return {"path": path, "nodes_explored": tracker.total_nodes if tracker else 0}
         finally:
-            with self.redis.pipeline() as pipe:
-                for key in keys:
-                    pipe.delete(key)
-                pipe.execute()
+            self.cache_service.delete_many(keys)
 
     def _run_bidir_bfs(
         self,
@@ -488,11 +479,7 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
             if not links:
                 continue
 
-            with self.redis.pipeline() as pipe:
-                for link in links:
-                    pipe.sismember(fwd_vis, link)
-                already_visited = pipe.execute()
-
+            already_visited = self.cache_service.set_contains_many(fwd_vis, links)
             new_links = [
                 lnk
                 for lnk, seen in zip(links, already_visited, strict=False)
@@ -502,16 +489,9 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
             if not new_links:
                 continue
 
-            with self.redis.pipeline() as pipe:
-                for link in new_links:
-                    pipe.sismember(bwd_vis, link)
-                in_bwd = pipe.execute()
-
-            with self.redis.pipeline() as pipe:
-                for link in new_links:
-                    pipe.sadd(fwd_vis, link)
-                    pipe.hset(fwd_par, link, page)
-                pipe.execute()
+            in_bwd = self.cache_service.set_contains_many(bwd_vis, new_links)
+            self.cache_service.set_add_many(fwd_vis, new_links)
+            self.cache_service.hash_set_many(fwd_par, {lnk: page for lnk in new_links})
 
             self.queue_service.push_batch(
                 fwd_q, [{"page": lnk, "depth": depth + 1} for lnk in new_links]
@@ -562,11 +542,7 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
             if not links:
                 continue
 
-            with self.redis.pipeline() as pipe:
-                for link in links:
-                    pipe.sismember(bwd_vis, link)
-                already_visited = pipe.execute()
-
+            already_visited = self.cache_service.set_contains_many(bwd_vis, links)
             new_links = [
                 lnk
                 for lnk, seen in zip(links, already_visited, strict=False)
@@ -576,16 +552,9 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
             if not new_links:
                 continue
 
-            with self.redis.pipeline() as pipe:
-                for link in new_links:
-                    pipe.sismember(fwd_vis, link)
-                in_fwd = pipe.execute()
-
-            with self.redis.pipeline() as pipe:
-                for link in new_links:
-                    pipe.sadd(bwd_vis, link)
-                    pipe.hset(bwd_par, link, page)
-                pipe.execute()
+            in_fwd = self.cache_service.set_contains_many(fwd_vis, new_links)
+            self.cache_service.set_add_many(bwd_vis, new_links)
+            self.cache_service.hash_set_many(bwd_par, {lnk: page for lnk in new_links})
 
             self.queue_service.push_batch(
                 bwd_q, [{"page": lnk, "depth": depth + 1} for lnk in new_links]
@@ -615,10 +584,10 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         """Reconstruct forward path from start to node via parent hash."""
         path = [node]
         while True:
-            parent = self.redis.hget(parent_hash_key, path[-1])
+            parent = self.cache_service.hash_get(parent_hash_key, path[-1])
             if parent is None:
                 break
-            path.append(parent.decode() if isinstance(parent, bytes) else parent)
+            path.append(parent)
         path.reverse()
         return path
 
@@ -627,12 +596,11 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         chain: list[str] = []
         current = node
         while True:
-            child = self.redis.hget(bwd_par, current)
+            child = self.cache_service.hash_get(bwd_par, current)
             if child is None:
                 break
-            child_str = child.decode() if isinstance(child, bytes) else child
-            chain.append(child_str)
-            current = child_str
+            chain.append(child)
+            current = child
         return chain
 
     def _reconstruct_bidir_path(

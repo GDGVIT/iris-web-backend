@@ -268,12 +268,10 @@ def health_check_task(self):
         # Perform basic health checks
         from app.core.factory import ServiceFactory
 
-        # Test Redis connection
-        redis_client = ServiceFactory.get_redis_client()
-        redis_client.ping()
-
-        # Test cache service
+        # Test cache service (ping also validates Redis connectivity)
         cache_service = ServiceFactory.get_cache_service()
+        if not cache_service.ping():
+            raise Exception("Redis ping failed")
         test_key = f"health_check_{task_id}"
         cache_service.set(test_key, "ok", ttl=60)
         cache_value = cache_service.get(test_key)

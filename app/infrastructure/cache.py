@@ -66,6 +66,93 @@ class RedisCache(CacheServiceInterface):
         cache_key = f"wiki_links:{page_title}"
         self.set(cache_key, links, ttl)
 
+    def delete_many(self, keys: list[str]) -> None:
+        """Delete multiple keys in a single pipeline round-trip."""
+        if not keys:
+            return
+        try:
+            with self.redis_client.pipeline() as pipe:
+                for key in keys:
+                    pipe.delete(key)
+                pipe.execute()
+        except redis.RedisError as e:
+            logger.error(f"Failed to delete keys {keys}: {e}")
+            raise CacheConnectionError(f"Cache delete_many failed: {e}")
+
+    def ping(self) -> bool:
+        """Return True if Redis is reachable."""
+        try:
+            return bool(self.redis_client.ping())
+        except redis.RedisError:
+            return False
+
+    def set_add(self, key: str, value: str) -> None:
+        """Add a value to a Redis set."""
+        try:
+            self.redis_client.sadd(key, value)
+        except redis.RedisError as e:
+            raise CacheConnectionError(f"set_add failed: {e}")
+
+    def set_add_many(self, key: str, values: list[str]) -> None:
+        """Add multiple values to a Redis set in one pipeline round-trip."""
+        if not values:
+            return
+        try:
+            with self.redis_client.pipeline() as pipe:
+                for v in values:
+                    pipe.sadd(key, v)
+                pipe.execute()
+        except redis.RedisError as e:
+            raise CacheConnectionError(f"set_add_many failed: {e}")
+
+    def set_contains(self, key: str, value: str) -> bool:
+        """Return True if value is a member of the set."""
+        try:
+            return bool(self.redis_client.sismember(key, value))
+        except redis.RedisError as e:
+            raise CacheConnectionError(f"set_contains failed: {e}")
+
+    def set_contains_many(self, key: str, values: list[str]) -> list[bool]:
+        """Return membership booleans for each value in one pipeline round-trip."""
+        if not values:
+            return []
+        try:
+            with self.redis_client.pipeline() as pipe:
+                for v in values:
+                    pipe.sismember(key, v)
+                return [bool(r) for r in pipe.execute()]
+        except redis.RedisError as e:
+            raise CacheConnectionError(f"set_contains_many failed: {e}")
+
+    def hash_set(self, key: str, field: str, value: str) -> None:
+        """Set a field in a Redis hash."""
+        try:
+            self.redis_client.hset(key, field, value)
+        except redis.RedisError as e:
+            raise CacheConnectionError(f"hash_set failed: {e}")
+
+    def hash_set_many(self, key: str, mapping: dict[str, str]) -> None:
+        """Set multiple fields in a Redis hash in one pipeline round-trip."""
+        if not mapping:
+            return
+        try:
+            with self.redis_client.pipeline() as pipe:
+                for field, value in mapping.items():
+                    pipe.hset(key, field, value)
+                pipe.execute()
+        except redis.RedisError as e:
+            raise CacheConnectionError(f"hash_set_many failed: {e}")
+
+    def hash_get(self, key: str, field: str) -> str | None:
+        """Get a field from a Redis hash. Returns None if missing."""
+        try:
+            result = self.redis_client.hget(key, field)
+            if result is None:
+                return None
+            return result.decode() if isinstance(result, bytes) else result  # type: ignore[union-attr]
+        except redis.RedisError as e:
+            raise CacheConnectionError(f"hash_get failed: {e}")
+
     def clear_pattern(self, pattern: str) -> int:
         """Clear all keys matching a pattern."""
         try:
