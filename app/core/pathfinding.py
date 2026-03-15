@@ -394,11 +394,11 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
 
             if bwd_size > 0 and (fwd_size == 0 or bwd_size < fwd_size):
                 meeting = self._expand_backward_batch(
-                    end_page, bwd_q, bwd_vis, bwd_par, fwd_vis, fwd_par, bwd_max
+                    end_page, fwd_q, bwd_q, bwd_vis, bwd_par, fwd_vis, fwd_par, bwd_max
                 )
             else:
                 meeting = self._expand_forward_batch(
-                    start_page, fwd_q, fwd_vis, fwd_par, bwd_vis, bwd_par, fwd_max
+                    start_page, fwd_q, bwd_q, fwd_vis, fwd_par, bwd_vis, bwd_par, fwd_max
                 )
 
             if meeting is not None:
@@ -412,6 +412,7 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         self,
         start_page: str,
         fwd_q: str,
+        bwd_q: str,
         fwd_vis: str,
         fwd_par: str,
         bwd_vis: str,
@@ -427,25 +428,23 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
             return None
 
         page_names = [item["page"] for item in batch]
-        last_node = page_names[-1] if page_names else start_page
 
         def on_page_fetched(
             _title: str,
             _links: list[str],
             *,
             _d: int = depth,
-            _ln: str = last_node,
         ) -> None:
             with self.nodes_lock:
                 self.nodes_explored += 1
             if self.progress_callback:
-                fwd_size = self.queue_service.length(fwd_q)
+                combined_size = self.queue_service.length(fwd_q) + self.queue_service.length(bwd_q)
                 self.progress_callback(
                     {
                         "nodes_explored": self.nodes_explored,
-                        "queue_size": fwd_size,
+                        "queue_size": combined_size,
                         "current_depth": _d,
-                        "last_node": _ln,
+                        "last_node": _title,
                         "direction": "forward",
                     }
                 )
@@ -500,6 +499,7 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
     def _expand_backward_batch(
         self,
         end_page: str,
+        fwd_q: str,
         bwd_q: str,
         bwd_vis: str,
         bwd_par: str,
@@ -516,25 +516,23 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
             return None
 
         page_names = [item["page"] for item in batch]
-        last_node = page_names[-1] if page_names else end_page
 
         def on_page_fetched(
             _title: str,
             _links: list[str],
             *,
             _d: int = depth,
-            _ln: str = last_node,
         ) -> None:
             with self.nodes_lock:
                 self.nodes_explored += 1
             if self.progress_callback:
-                bwd_size = self.queue_service.length(bwd_q)
+                combined_size = self.queue_service.length(fwd_q) + self.queue_service.length(bwd_q)
                 self.progress_callback(
                     {
                         "nodes_explored": self.nodes_explored,
-                        "queue_size": bwd_size,
+                        "queue_size": combined_size,
                         "current_depth": _d,
-                        "last_node": _ln,
+                        "last_node": _title,
                         "direction": "backward",
                     }
                 )
