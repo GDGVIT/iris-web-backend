@@ -43,7 +43,7 @@ def test_get_links_bulk_uses_cache_and_fetch(monkeypatch):
     client = WikipediaClient(cache_service=cache)
     # avoid threads and network: patch _fetch_single_page so _bulk_fetch can use it
 
-    def fake_fetch(title):
+    def fake_fetch(title, **kwargs):
         return {title: ["B", "C"] if title == "Miss" else []}
 
     monkeypatch.setattr(client, "_fetch_single_page", fake_fetch)
@@ -117,7 +117,7 @@ def test_get_links_bulk_no_cache_service(monkeypatch):
     monkeypatch.setattr(
         client,
         "_fetch_single_page",
-        lambda title: {title: ["L"]},
+        lambda title, **kwargs: {title: ["L"]},
     )
     result = client.get_links_bulk(["A", "B"])
     assert result == {"A": ["L"], "B": ["L"]}
@@ -128,40 +128,39 @@ def test_get_links_bulk_empty_returns_empty():
     assert client.get_links_bulk([]) == {}
 
 
-def test_fetch_single_page_success_and_error(app):
-    """_fetch_single_page needs an app context for current_app.config."""
+def test_fetch_single_page_success_and_error():
+    """_fetch_single_page fetches links and raises WikipediaAPIError on network failure."""
     session = DummySession()
     client = WikipediaClient(session=cast(requests.Session, session))
 
-    with app.app_context():
-        # Successful fetch — page with two article links
-        session.set_response(
-            {
-                "query": {
-                    "pages": {
-                        "1": {
-                            "title": "Python",
-                            "links": [
-                                {"title": "Category:Languages"},  # filtered (has colon)
-                                {"title": "Guido van Rossum"},
-                                {
-                                    "title": "List of Python topics"
-                                },  # kept (starts with "List of")
-                            ],
-                        }
+    # Successful fetch — page with two article links
+    session.set_response(
+        {
+            "query": {
+                "pages": {
+                    "1": {
+                        "title": "Python",
+                        "links": [
+                            {"title": "Category:Languages"},  # filtered (has colon)
+                            {"title": "Guido van Rossum"},
+                            {
+                                "title": "List of Python topics"
+                            },  # kept (starts with "List of")
+                        ],
                     }
                 }
             }
-        )
-        result = client._fetch_single_page("Python")
-        assert result["Python"] == ["Guido van Rossum", "List of Python topics"]
+        }
+    )
+    result = client._fetch_single_page("Python")
+    assert result["Python"] == ["Guido van Rossum", "List of Python topics"]
 
-        # Request error raises WikipediaAPIError
-        from app.utils.exceptions import WikipediaAPIError
+    # Request error raises WikipediaAPIError
+    from app.utils.exceptions import WikipediaAPIError
 
-        session.set_response({}, raise_exc=requests.RequestException("timeout"))
-        with pytest.raises(WikipediaAPIError):
-            client._fetch_single_page("Python")
+    session.set_response({}, raise_exc=requests.RequestException("timeout"))
+    with pytest.raises(WikipediaAPIError):
+        client._fetch_single_page("Python")
 
 
 def test_get_page_with_redirect_info_redirected():
@@ -238,7 +237,7 @@ def test_bulk_fetch_parallel_merge(monkeypatch):
     # Stub _fetch_single_page to avoid network
     calls = []
 
-    def fake_fetch_single(title):
+    def fake_fetch_single(title, **kwargs):
         calls.append(title)
         return {title: ["L1", "L2"]}
 

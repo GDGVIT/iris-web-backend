@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import partial
 
 import requests
 from flask import current_app
@@ -40,7 +41,7 @@ class WikipediaClient(WikipediaClientInterface):
         self,
         page_titles: list[str],
         cache_prefix: str,
-        fetch_fn: Callable[[str], dict[str, list[str]]],
+        fetch_fn: Callable[..., dict[str, list[str]]],
         on_page_fetched: Callable[[str, list[str]], None] | None,
     ) -> dict[str, list[str]]:
         """Shared scaffolding: cache-check, thread-pool fetch, cache results.
@@ -85,9 +86,14 @@ class WikipediaClient(WikipediaClientInterface):
         if uncached_titles:
             fresh_results: dict[str, list[str]] = {}
 
+            # Read pagination config here (app context available), bind to fetch_fn
+            # so threads don't need to access current_app themselves.
+            max_paginate_calls = current_app.config.get("WIKIPEDIA_MAX_PAGINATE_CALLS", 10)
+            bound_fetch = partial(fetch_fn, max_paginate_calls=max_paginate_calls)
+
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 future_to_title = {
-                    executor.submit(fetch_fn, title): title for title in uncached_titles
+                    executor.submit(bound_fetch, title): title for title in uncached_titles
                 }
                 for future in as_completed(future_to_title):
                     title = future_to_title[future]
@@ -158,7 +164,7 @@ class WikipediaClient(WikipediaClientInterface):
             on_page_fetched,
         )
 
-    def _fetch_single_page(self, title: str) -> dict[str, list[str]]:
+    def _fetch_single_page(self, title: str, max_paginate_calls: int = 10) -> dict[str, list[str]]:
         """Fetch links for a single Wikipedia page with plcontinue pagination."""
         params: dict[str, str | int] = {
             "action": "query",
@@ -169,7 +175,7 @@ class WikipediaClient(WikipediaClientInterface):
             "redirects": 1,
         }
         all_links: list[str] = []
-        max_pages = current_app.config.get("WIKIPEDIA_MAX_PAGINATE_CALLS", 10)
+        max_pages = max_paginate_calls
         calls = 0
 
         try:
@@ -193,7 +199,7 @@ class WikipediaClient(WikipediaClientInterface):
 
         return {title: all_links}
 
-    def _fetch_backlinks_single_page(self, title: str) -> dict[str, list[str]]:
+    def _fetch_backlinks_single_page(self, title: str, max_paginate_calls: int = 10) -> dict[str, list[str]]:
         """Fetch backlinks for a single Wikipedia page with blcontinue pagination.
 
         Uses ``list=backlinks`` which returns pages that link *to* ``title``.
@@ -209,7 +215,7 @@ class WikipediaClient(WikipediaClientInterface):
             "redirects": 1,
         }
         all_backlinks: list[str] = []
-        max_pages = current_app.config.get("WIKIPEDIA_MAX_PAGINATE_CALLS", 10)
+        max_pages = max_paginate_calls
         calls = 0
 
         try:
