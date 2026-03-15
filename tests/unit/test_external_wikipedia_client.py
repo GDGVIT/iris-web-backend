@@ -10,7 +10,8 @@ from app.external.wikipedia import WikipediaClient
 class DummyResponse:
     def __init__(self, payload, status=200, raise_exc=None):
         self._payload = payload
-        self._status = status
+        self.status_code = status
+        self.headers: dict = {}
         self._raise = raise_exc
 
     def raise_for_status(self):
@@ -26,12 +27,16 @@ class DummySession:
         self.headers = {}
         self.calls = []
         self._response = DummyResponse({"query": {}})
+        self._raise_exc = None
 
     def set_response(self, payload, raise_exc=None):
-        self._response = DummyResponse(payload, raise_exc=raise_exc)
+        self._raise_exc = raise_exc
+        self._response = DummyResponse(payload)
 
     def get(self, url, params=None, timeout=None):
         self.calls.append((url, params, timeout))
+        if self._raise_exc:
+            raise self._raise_exc
         return self._response
 
 
@@ -131,7 +136,11 @@ def test_get_links_bulk_empty_returns_empty():
 def test_fetch_single_page_success_and_error():
     """_fetch_single_page fetches links and raises WikipediaAPIError on network failure."""
     session = DummySession()
-    client = WikipediaClient(session=cast(requests.Session, session))
+    # max_retries=1 and request_delay=0.0 keep the test instant: no backoff sleep,
+    # no rate-limiter sleep.
+    client = WikipediaClient(
+        session=cast(requests.Session, session), max_retries=1, request_delay=0.0
+    )
 
     # Successful fetch — page with two article links
     session.set_response(

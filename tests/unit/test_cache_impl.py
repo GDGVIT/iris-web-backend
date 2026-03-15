@@ -1,4 +1,5 @@
 import json
+from unittest.mock import Mock
 
 import pytest
 import redis
@@ -42,7 +43,7 @@ def test_cache_set_success_does_not_raise(mock_redis):
     cache.set("x", {"y": 1})
 
 
-def test_cache_delete_exists_and_ttl(mock_redis):
+def test_cache_delete_exists(mock_redis):
     cache = RedisCache(mock_redis)
 
     cache.delete("k")
@@ -50,9 +51,6 @@ def test_cache_delete_exists_and_ttl(mock_redis):
 
     mock_redis.exists.return_value = 1
     assert cache.exists("k") is True
-
-    mock_redis.ttl.return_value = 42
-    assert cache.get_ttl("k") == 42
 
 
 def test_cache_delete_and_exists_error_raises(mock_redis):
@@ -87,28 +85,6 @@ def test_cache_clear_pattern_error(mock_redis):
         cache.clear_pattern("*")
 
 
-def test_cache_increment_and_error(mock_redis):
-    cache = RedisCache(mock_redis)
-    mock_redis.incrby.return_value = 5
-    assert cache.increment("c", 2) == 5
-
-    mock_redis.incrby.side_effect = redis.RedisError("boom")
-    with pytest.raises(CacheConnectionError):
-        cache.increment("c", 1)
-
-
-def test_cache_set_if_not_exists(mock_redis):
-    cache = RedisCache(mock_redis, default_ttl=9)
-    mock_redis.set.return_value = True
-    assert cache.set_if_not_exists("k", {"v": 1}) is True
-    mock_redis.set.assert_called()
-
-    mock_redis.set.return_value = False
-    assert cache.set_if_not_exists("k", {"v": 1}) is False
-
-    # Avoid triggering code path that references non-existent JSONEncodeError
-
-
 def test_cache_set_error_raises(mock_redis):
     cache = RedisCache(mock_redis)
     mock_redis.setex.side_effect = redis.RedisError("write failed")
@@ -116,36 +92,230 @@ def test_cache_set_error_raises(mock_redis):
         cache.set("k", {"v": 1})
 
 
-def test_cache_set_if_not_exists_error(mock_redis):
+def test_ping_success(mock_redis):
     cache = RedisCache(mock_redis)
-    mock_redis.set.side_effect = redis.RedisError("write failed")
+    mock_redis.ping.return_value = True
+    assert cache.ping() is True
+
+
+def test_ping_redis_error_returns_false(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.ping.side_effect = redis.RedisError("connection refused")
+    assert cache.ping() is False
+
+
+def test_delete_many_calls_pipeline(mock_redis):
+    cache = RedisCache(mock_redis)
+    deleted = []
+
+    class _Pipe:
+        def delete(self, key):
+            deleted.append(key)
+            return self
+
+        def execute(self):
+            return [1] * len(deleted)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+    mock_redis.pipeline.side_effect = lambda: _Pipe()
+    cache.delete_many(["k1", "k2", "k3"])
+    assert set(deleted) == {"k1", "k2", "k3"}
+
+
+def test_delete_many_empty_is_noop(mock_redis):
+    cache = RedisCache(mock_redis)
+    cache.delete_many([])
+    mock_redis.pipeline.assert_not_called()
+
+
+def test_delete_many_redis_error_raises(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.pipeline.side_effect = redis.RedisError("err")
     with pytest.raises(CacheConnectionError):
-        cache.set_if_not_exists("k", {"v": 1})
+        cache.delete_many(["k1"])
 
 
-def test_get_links_from_cache_and_set_links(mock_redis):
+def test_set_add(mock_redis):
     cache = RedisCache(mock_redis)
-    import json
-
-    # set_links_in_cache
-    cache.set_links_in_cache("Python", ["A", "B"])
-    args, _ = mock_redis.setex.call_args
-    assert args[0] == "wiki_links:Python"
-
-    # get_links_from_cache hit
-    mock_redis.get.return_value = json.dumps(["A", "B"])
-    result = cache.get_links_from_cache("Python")
-    assert result == ["A", "B"]
-
-    # get_links_from_cache miss
-    mock_redis.get.return_value = None
-    assert cache.get_links_from_cache("Missing") is None
+    mock_redis.sadd = Mock(return_value=1)
+    cache.set_add("myset", "value")
+    mock_redis.sadd.assert_called_once_with("myset", "value")
 
 
-def test_get_ttl_error_returns_minus_one(mock_redis):
+def test_set_add_redis_error(mock_redis):
     cache = RedisCache(mock_redis)
-    mock_redis.ttl.side_effect = redis.RedisError("err")
-    assert cache.get_ttl("k") == -1
+    mock_redis.sadd = Mock(side_effect=redis.RedisError("sadd failed"))
+    with pytest.raises(CacheConnectionError):
+        cache.set_add("myset", "value")
+
+
+def test_set_contains_true_and_false(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.sismember = Mock(return_value=True)
+    assert cache.set_contains("myset", "value") is True
+    mock_redis.sismember.return_value = False
+    assert cache.set_contains("myset", "other") is False
+
+
+def test_set_contains_redis_error(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.sismember = Mock(side_effect=redis.RedisError("sismember failed"))
+    with pytest.raises(CacheConnectionError):
+        cache.set_contains("myset", "value")
+
+
+def test_set_add_many_calls_pipeline(mock_redis):
+    cache = RedisCache(mock_redis)
+    added = []
+
+    class _Pipe:
+        def sadd(self, key, val):
+            added.append((key, val))
+            return self
+
+        def execute(self):
+            return [1] * len(added)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+    mock_redis.pipeline.side_effect = lambda: _Pipe()
+    cache.set_add_many("myset", ["a", "b", "c"])
+    assert len(added) == 3
+    assert all(key == "myset" for key, _ in added)
+    assert {val for _, val in added} == {"a", "b", "c"}
+
+
+def test_set_add_many_empty_is_noop(mock_redis):
+    cache = RedisCache(mock_redis)
+    cache.set_add_many("myset", [])
+    mock_redis.pipeline.assert_not_called()
+
+
+def test_set_add_many_redis_error(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.pipeline.side_effect = redis.RedisError("pipeline failed")
+    with pytest.raises(CacheConnectionError):
+        cache.set_add_many("myset", ["a"])
+
+
+def test_set_contains_many(mock_redis):
+    cache = RedisCache(mock_redis)
+
+    class _Pipe:
+        def sismember(self, key, val):
+            return self
+
+        def execute(self):
+            return [True, False, True]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+    mock_redis.pipeline.side_effect = lambda: _Pipe()
+    result = cache.set_contains_many("myset", ["a", "b", "c"])
+    assert result == [True, False, True]
+
+
+def test_set_contains_many_empty(mock_redis):
+    cache = RedisCache(mock_redis)
+    assert cache.set_contains_many("myset", []) == []
+
+
+def test_set_contains_many_redis_error(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.pipeline.side_effect = redis.RedisError("pipeline failed")
+    with pytest.raises(CacheConnectionError):
+        cache.set_contains_many("myset", ["a", "b"])
+
+
+def test_hash_set(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.hset = Mock(return_value=1)
+    cache.hash_set("myhash", "field", "value")
+    mock_redis.hset.assert_called_once_with("myhash", "field", "value")
+
+
+def test_hash_set_redis_error(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.hset = Mock(side_effect=redis.RedisError("hset failed"))
+    with pytest.raises(CacheConnectionError):
+        cache.hash_set("myhash", "field", "value")
+
+
+def test_hash_get_str_value(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.hget = Mock(return_value="value")
+    assert cache.hash_get("myhash", "field") == "value"
+
+
+def test_hash_get_bytes_decoded(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.hget = Mock(return_value=b"value")
+    assert cache.hash_get("myhash", "field") == "value"
+
+
+def test_hash_get_missing_returns_none(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.hget = Mock(return_value=None)
+    assert cache.hash_get("myhash", "field") is None
+
+
+def test_hash_get_redis_error(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.hget = Mock(side_effect=redis.RedisError("hget failed"))
+    with pytest.raises(CacheConnectionError):
+        cache.hash_get("myhash", "field")
+
+
+def test_hash_set_many(mock_redis):
+    cache = RedisCache(mock_redis)
+    calls = []
+
+    class _Pipe:
+        def hset(self, key, field, val):
+            calls.append((key, field, val))
+            return self
+
+        def execute(self):
+            return [1] * len(calls)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+    mock_redis.pipeline.side_effect = lambda: _Pipe()
+    cache.hash_set_many("myhash", {"f1": "v1", "f2": "v2"})
+    assert len(calls) == 2
+    assert all(key == "myhash" for key, _, _ in calls)
+    fields = {f for _, f, _ in calls}
+    assert fields == {"f1", "f2"}
+
+
+def test_hash_set_many_empty_is_noop(mock_redis):
+    cache = RedisCache(mock_redis)
+    cache.hash_set_many("myhash", {})
+    mock_redis.pipeline.assert_not_called()
+
+
+def test_hash_set_many_redis_error(mock_redis):
+    cache = RedisCache(mock_redis)
+    mock_redis.pipeline.side_effect = redis.RedisError("pipeline failed")
+    with pytest.raises(CacheConnectionError):
+        cache.hash_set_many("myhash", {"f": "v"})
 
 
 def test_get_redis_connection_error(monkeypatch):

@@ -20,8 +20,6 @@ logger = get_logger(__name__)
     bind=True,
     autoretry_for=(requests.RequestException, CacheConnectionError, WikipediaAPIError),
     retry_kwargs={"max_retries": 3, "countdown": 60},
-    soft_time_limit=300,  # 5 minutes
-    time_limit=600,  # 10 minutes
 )
 def find_path_task(
     self, start_page: str, end_page: str, algorithm: str = "bidirectional"
@@ -345,17 +343,9 @@ def configure_task_routes(app):
         "app.infrastructure.tasks.cache_cleanup_task": {"queue": "maintenance"},
     }
 
-    # Task time limits
-    app.conf.task_time_limit = 600  # 10 minutes hard limit
-    app.conf.task_soft_time_limit = 300  # 5 minutes soft limit
-
     # Task result settings
     app.conf.result_expires = 3600  # Results expire after 1 hour
     app.conf.result_persistent = True
-
-    # Task execution settings
-    app.conf.task_acks_late = True
-    app.conf.worker_prefetch_multiplier = 1
 
     # Task retry settings
     app.conf.task_reject_on_worker_lost = True

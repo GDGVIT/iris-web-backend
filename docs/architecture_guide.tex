@@ -154,36 +154,36 @@
 \begin{titlepage}
     \centering
     \vspace*{2cm}
-    
+
     {\Huge\bfseries\color{accentblue} Iris Backend\\[0.3cm] Architecture Guide}
-    
+
     \vspace{1cm}
-    
+
     {\Large Wikipedia Pathfinding Engine}
-    
+
     \vspace{2cm}
-    
+
     \begin{tikzpicture}[
         layer/.style={draw, rounded corners, minimum width=11cm, minimum height=1.2cm, align=center, font=\small},
         arrow/.style={->, thick, >=stealth}
     ]
         \node[layer, fill=accentblue!20] (api) at (0,4) {\textbf{HTTP API Layer} (routes.py)\\Receives requests $\rightarrow$ Validates $\rightarrow$ Delegates};
         \node[layer, fill=accentgreen!20] (services) at (0,2) {\textbf{Business Services Layer} (services.py)\\Orchestrates operations $\rightarrow$ Uses pathfinders $\rightarrow$ Caching};
-        \node[layer, fill=warningorange!20] (core) at (0,0) {\textbf{Core Domain Layer} (pathfinding.py)\\Contains CORE ALGORITHM (BFS, Bidirectional BFS)};
+        \node[layer, fill=warningorange!20] (core) at (0,0) {\textbf{Core Domain Layer} (pathfinding.py)\\BFS + Bidirectional BFS with Redis-based state};
         \node[layer, fill=codegray!20] (infra) at (0,-2) {\textbf{Infrastructure Layer}\\Redis cache, Redis queue, Celery tasks, Wikipedia API};
-        
+
         \draw[arrow] (api) -- (services);
         \draw[arrow] (services) -- (core);
         \draw[arrow] (core) -- (infra);
     \end{tikzpicture}
-    
+
     \vspace{2cm}
-    
+
     {\large Interview Preparation \& Development Reference}
-    
+
     \vfill
-    
-    {\large Last Updated: January 2026}
+
+    {\large Last Updated: March 2026}
 \end{titlepage}
 
 % ============================================
@@ -212,7 +212,7 @@ iris-web-backend/
 |   |   |-- factory.py           # Dependency Injection (ServiceFactory)
 |   |   |-- interfaces.py        # Abstract interfaces (contracts)
 |   |   |-- models.py            # Data models (dataclasses)
-|   |   |-- pathfinding.py       # CORE ALGORITHM (BFS)
+|   |   |-- pathfinding.py       # CORE ALGORITHM (BFS + Bidirectional BFS)
 |   |   |-- services.py          # Business services orchestration
 |   |-- external/                # External API integrations
 |   |   |-- wikipedia.py         # Wikipedia API client
@@ -225,6 +225,9 @@ iris-web-backend/
 |       |-- logging.py           # Logging configuration
 |-- config/                      # Configuration classes
 |-- tests/                       # Test suites
+|   |-- conftest.py              # Shared fixtures (stateful mocks)
+|   |-- unit/                    # Unit tests (per-class)
+|   |-- integration/             # Integration tests (service interactions)
 |-- run.py                       # Application entry point
 |-- celery_worker.py             # Celery worker entry point
 \end{lstlisting}
@@ -245,14 +248,14 @@ Layer & Responsibility \\
 HTTP API Layer \newline \footnotesize\texttt{app/api/} &
 Receives HTTP requests, validates input using Marshmallow schemas, applies cross-cutting middleware (CORS, logging, error handling), delegates to business services, and formats JSON responses. Swagger spec is auto-assembled from YAML docstrings on each route function via Flasgger. \\
 \addlinespace[0.5em]
-Business Services \newline \footnotesize\texttt{app/core/services.py} & 
-Orchestrates business operations. Checks cache before invoking pathfinding, coordinates between pathfinders and Wikipedia client, encapsulates use cases like ``find path'' or ``explore page.'' \\
+Business Services \newline \footnotesize\texttt{app/core/services.py} &
+Orchestrates business operations. Checks cache before invoking pathfinding, coordinates between pathfinders and Wikipedia client, encapsulates use cases like ``find path'' or ``get page info.'' \\
 \addlinespace[0.5em]
-Core Domain \newline \footnotesize\texttt{app/core/pathfinding.py} & 
-Contains the pure BFS algorithm. No knowledge of HTTP, Redis, or Flask. Only knows about abstract interfaces. This is where the graph traversal logic lives. \\
+Core Domain \newline \footnotesize\texttt{app/core/pathfinding.py} &
+Contains the BFS and Bidirectional BFS algorithms. No knowledge of HTTP or Flask. Only knows about abstract interfaces. This is where the graph traversal logic lives. \\
 \addlinespace[0.5em]
-Infrastructure \newline \footnotesize\texttt{app/infrastructure/} & 
-Concrete implementations: Redis cache, Redis queue for BFS state, Celery tasks for background processing, Wikipedia API client. All ``how'' details live here. \\
+Infrastructure \newline \footnotesize\texttt{app/infrastructure/} &
+Concrete implementations: Redis cache, Redis queue for BFS state, Celery tasks for background processing. Also \texttt{app/external/wikipedia.py} for the Wikipedia API client. All ``how'' details live here. \\
 \bottomrule
 \end{tabularx}
 
@@ -272,7 +275,7 @@ Concrete implementations: Redis cache, Redis queue for BFS state, Celery tasks f
     \node[box, fill=warningorange!20, below=of services] (pathfinding) {pathfinding.py};
     \node[box, fill=codegray!20, left=of pathfinding] (wikipedia) {wikipedia.py};
     \node[box, fill=codegray!20, right=of pathfinding] (redis) {Redis};
-    
+
     \draw[arrow] (client) -- (routes);
     \draw[arrow] (routes) -- (middleware);
     \draw[arrow] (middleware) -- (celery);
@@ -353,7 +356,7 @@ This section justifies key technical decisions from a \textbf{distributed system
 \begin{decisionbox}{Redis-Based BFS Queue with Batch Node Processing}
 \textbf{Problem:} BFS at depth 5+ can involve millions of nodes. Python's \texttt{deque} would exhaust worker memory. Fetching links one node at a time also wastes Wikipedia API capacity.
 
-\textbf{Decision:} Store BFS queue and visited set in Redis. Each iteration pops a \textbf{batch} of nodes (\texttt{BFS\_BATCH\_SIZE}, default 50) and fetches all their links in a single \texttt{get\_links\_bulk} call.
+\textbf{Decision:} Store BFS queue and visited set in Redis. Each iteration pops a \textbf{batch} of nodes (\texttt{BFS\_BATCH\_SIZE}, default 50) and fetches all their links in a single \texttt{get\_links\_bulk} call which fans out to N parallel Wikipedia requests.
 
 \textbf{Engineering Justification:}
 \begin{itemize}[leftmargin=*, nosep]
@@ -379,34 +382,53 @@ This section justifies key technical decisions from a \textbf{distributed system
 \end{itemize}
 \end{decisionbox}
 
-\begin{decisionbox}{Wikipedia API Fetching: One Request Per Page}
+\begin{decisionbox}{Wikipedia API Fetching: One Request Per Page, with Pagination}
 \textbf{Problem:} Wikipedia's \texttt{prop=links} API returns at most 500 links per request (\texttt{pllimit=max}). This cap is \textbf{global per API call}, not per title. Grouping multiple titles in one request causes link starvation: a high-link-count hub page (e.g.\ \textit{Microsoft} with 500+ links) consumes the entire 500-link quota, leaving other pages in the same request with 0 links returned.
 
-\textbf{Decision:} Each page title is fetched in its own API call. Parallelism is preserved via \texttt{ThreadPoolExecutor} (\texttt{WIKIPEDIA\_MAX\_WORKERS}, default: 10), so a BFS batch of 50 nodes still issues all 50 requests concurrently.
+\textbf{Decision:} Each page title is fetched in its own API call. Parallelism is preserved via \texttt{ThreadPoolExecutor} (\texttt{WIKIPEDIA\_MAX\_WORKERS}, default: 10), so a BFS batch of 50 nodes still issues all 50 requests concurrently. Pagination is followed up to \texttt{WIKIPEDIA\_MAX\_PAGINATE\_CALLS} (default: 3) pages per title, yielding up to $3 \times 500 = 1{,}500$ links per page before truncating.
 
 \textbf{Engineering Justification:}
 \begin{itemize}[leftmargin=*, nosep]
-    \item \textbf{Correctness:} Every page receives its full 500-link allocation regardless of what other pages are in the same BFS batch.
+    \item \textbf{Correctness:} Every page receives its full link allocation regardless of what other pages are in the same BFS batch.
     \item \textbf{I/O Bound:} Wikipedia API calls are network-bound; threads maximise throughput without the starvation risk of multi-title requests.
-    \item \textbf{Rate Limiting:} Thread pool size implicitly caps concurrent requests to Wikipedia.
+    \item \textbf{Rate Limiting:} Thread pool size implicitly caps concurrent requests to Wikipedia. A shared \texttt{threading.Lock}-guarded rate limiter enforces a minimum interval between all requests across threads.
 \end{itemize}
 
-\textbf{Known Limitation:} Wikipedia paginates beyond 500 links via a \texttt{continue} token. This implementation does \textbf{not} follow pagination; only the first 500 outgoing links of any page are explored. For most articles this is sufficient, but high-connectivity hub pages may have paths that pass through links beyond the first 500. This is a conscious trade-off: following pagination would multiply API calls for hub pages and add latency for marginal accuracy gain.
+\textbf{Backoff Strategy:} \texttt{\_request\_with\_backoff} retries up to \texttt{max\_retries} (default: 5) times with exponential backoff ($2^{attempt}$ seconds). HTTP 429 responses honour the \texttt{Retry-After} header. 5xx server errors trigger the same backoff. Other 4xx errors raise \texttt{WikipediaAPIError} immediately without retry.
 \end{decisionbox}
 
-\begin{decisionbox}{Why Bidirectional BFS Was Abandoned}
-\textbf{Problem:} Bidirectional BFS works by expanding two frontiers simultaneously — one from the start and one from the end — and halting when they meet. This can reduce search space from $O(b^d)$ to $O(b^{d/2})$ in uniform graphs.
+\begin{decisionbox}{Bidirectional BFS using Wikipedia Backlinks}
+\textbf{Idea:} Standard BFS expands one frontier from the start page. Bidirectional BFS expands \textbf{two} frontiers simultaneously --- one forward from the start and one backward from the end --- and stops when they meet. Theoretical speedup: $O(b^{d/2})$ vs $O(b^d)$.
 
-\textbf{Why It Fails for Wikipedia:}
+\textbf{How the reverse frontier works in Wikipedia:} The backward frontier needs to know ``which pages link \emph{to} the current target?'' This is Wikipedia's \texttt{prop=linkshere} API (``what links here''). The \texttt{get\_backlinks\_bulk} method calls this API, caching results under the \texttt{wiki\_backlinks:} key prefix.
+
+\textbf{Algorithm (\texttt{BidirectionalBFSPathFinder}):}
+\begin{enumerate}[leftmargin=*, nosep]
+    \item Initialise \texttt{fwd\_queue} with \texttt{start\_page} (depth 0) and \texttt{bwd\_queue} with \texttt{end\_page} (depth 0).
+    \item Each iteration: expand whichever frontier is \textbf{smaller} (load balancing). Forward expands by following outgoing links; backward expands by following backlinks.
+    \item Visited sets (\texttt{fwd\_visited}, \texttt{bwd\_visited}) are Redis sets. Batch membership checks use \texttt{set\_contains\_many} (one pipeline round-trip).
+    \item When a newly discovered node is already in the \textit{opposite} frontier's visited set, that node is a \textbf{meeting point}.
+    \item If multiple meeting points are found in one batch, \texttt{\_pick\_shortest} selects the one whose combined forward+backward path length is shortest.
+    \item Path reconstruction: \texttt{\_reconstruct\_path(meeting, fwd\_par)} walks forward parent hashes from meeting back to start. \texttt{\_reconstruct\_bwd\_chain(meeting, bwd\_par)} walks backward parent hashes from meeting forward to end. The two segments are concatenated.
+\end{enumerate}
+
+\textbf{Depth budget:} \texttt{fwd\_max = (max\_depth + 1) // 2}, \texttt{bwd\_max = max\_depth // 2}. Each frontier stops expanding at its budget.
+
+\textbf{Trade-off:} Backlinks for very popular pages (e.g. ``United States'') can return extremely large result sets, making the backward frontier expensive. The ``expand smaller frontier'' heuristic mitigates this by deprioritising large frontiers. In the worst case (highly asymmetric graph), standard BFS may still be faster; in practice the algorithm often halves search depth.
+\end{decisionbox}
+
+\begin{decisionbox}{BidirProgressAggregator: Thread-Safe Dual-Frontier Progress}
+\textbf{Problem:} Two frontiers run concurrently (both call \texttt{get\_links\_bulk} / \texttt{get\_backlinks\_bulk} which fire \texttt{on\_page\_fetched} from worker threads). A single progress callback must receive unified stats without race conditions.
+
+\textbf{Decision:} \texttt{BidirProgressAggregator} owns all shared counters under one \texttt{threading.Lock}. Each frontier calls \texttt{aggregator.record(title, depth, direction)} from its \texttt{on\_page\_fetched} closure. The aggregator increments the appropriate counter, reads both queue sizes in one call, and fires the real callback with a unified snapshot.
+
+\textbf{What it tracks:}
 \begin{itemize}[leftmargin=*, nosep]
-    \item Wikipedia link graphs are \textbf{highly asymmetric}. A page like \textit{Adolf Hitler} has thousands of \textbf{incoming} links but only hundreds of \textbf{outgoing} links.
-    \item The reverse frontier (expanding backward from the target via incoming links) requires fetching ``what links here'' — a separate Wikipedia API call (\texttt{prop=linkshere}) that returns far larger result sets.
-    \item The reverse frontier explodes in size immediately, eliminating any search space reduction and typically making the search \textbf{slower} than standard BFS.
+    \item \texttt{\_fwd\_nodes}, \texttt{\_bwd\_nodes} --- separate node counts per direction.
+    \item \texttt{total\_nodes} property --- their sum.
+    \item \texttt{queue\_size} in the callback --- sum of both frontier queue lengths.
+    \item \texttt{direction} field --- lets the UI indicate which frontier found the node.
 \end{itemize}
-
-\textbf{Decision:} Retain only forward BFS. The \texttt{BidirectionalBFSPathFinder} class exists in the codebase and is selectable via the API \texttt{algorithm} parameter, but it delegates directly to \texttt{RedisBasedBFSPathFinder}. The \texttt{algorithm} field is kept in the API for forward compatibility.
-
-\textbf{Trade-off:} Forward BFS with Wikipedia's dense link graph typically finds paths of length 3--5 within seconds. The asymmetry that breaks bidirectional BFS is also what makes forward BFS fast.
 \end{decisionbox}
 
 \begin{decisionbox}{Cache TTLs Tuned to Data Volatility}
@@ -416,21 +438,21 @@ This section justifies key technical decisions from a \textbf{distributed system
 
 \textbf{Engineering Justification:}
 \begin{itemize}[leftmargin=*, nosep]
-    \item \texttt{wiki\_links:*} -- 24 hours. Page links rarely change; high reuse value.
+    \item \texttt{wiki\_links:*} and \texttt{wiki\_backlinks:*} -- 24 hours. Page links rarely change; high reuse value.
     \item \texttt{path:*:*} -- 1 hour. Paths are computed results; shorter TTL ensures freshness.
-    \item \texttt{bfs\_*} -- 1 hour with explicit cleanup. Ephemeral search state; cleaned after use.
+    \item \texttt{bfs\_*} -- explicit cleanup after search completes (not TTL-based). Periodic maintenance task sweeps orphaned keys.
 \end{itemize}
 \end{decisionbox}
 
 \begin{decisionbox}{UUID-Based Session Isolation for BFS State}
 \textbf{Problem:} Multiple concurrent searches must not interfere with each other's BFS state.
 
-\textbf{Decision:} Each search generates a UUID. All Redis keys are prefixed: \texttt{bfs\_queue:<uuid>}, \texttt{bfs\_visited:<uuid>:*}.
+\textbf{Decision:} Each search generates a UUID. All Redis keys are prefixed: \texttt{bfs\_queue:<uuid>}, \texttt{bfs\_visited:<uuid>}, \texttt{bfs\_parent:<uuid>}.
 
 \textbf{Engineering Justification:}
 \begin{itemize}[leftmargin=*, nosep]
     \item \textbf{No Locking Required:} Each search operates on its own keyspace.
-    \item \textbf{Easy Cleanup:} Pattern-based deletion: \texttt{DEL bfs\_*:<uuid>:*}.
+    \item \textbf{Easy Cleanup:} Pattern-based deletion via \texttt{delete\_many} in a \texttt{finally} block --- guaranteed to run even if search fails.
     \item \textbf{Debugging:} Can trace a specific search by its UUID in logs and Redis.
 \end{itemize}
 \end{decisionbox}
@@ -460,7 +482,7 @@ API Request Rate & Add more Flask/Gunicorn instances behind load balancer. \\
 \addlinespace[0.3em]
 Cache Size & Redis Cluster with sharding or increase instance memory. \\
 \addlinespace[0.3em]
-Wikipedia Rate Limits & Configurable thread pool; add delay; use multiple API keys. \\
+Wikipedia Rate Limits & Configurable thread pool; request delay; exponential backoff. \\
 \addlinespace[0.3em]
 Storage (Results) & Redis with TTL-based eviction; results auto-expire after 1 hour. \\
 \bottomrule
@@ -490,11 +512,13 @@ Component & Lifecycle & Reasoning \\
 \midrule
 Redis Client & Singleton & Maintains \texttt{ConnectionPool}; avoids TCP handshake overhead per request. \\
 \addlinespace[0.3em]
-Wikipedia Client & Singleton & Holds \texttt{requests.Session}; enables HTTP Keep-Alive and TLS session reuse. \\
+Wikipedia Client & Singleton & Holds \texttt{requests.Session}; enables HTTP Keep-Alive and TLS session reuse. Also owns the rate-limiter lock and last-request timestamp. \\
 \addlinespace[0.3em]
 Cache Service & Singleton & Shared serialization logic wrapping the Redis client. \\
 \addlinespace[0.3em]
-Pathfinding Service & Transient & New instance per task. Allows request-specific \texttt{progress\_callback} and algorithm. \\
+Queue Service & Singleton & Shared FIFO queue wrapping the same Redis client. \\
+\addlinespace[0.3em]
+Pathfinding Service & Transient & New instance per task. Allows request-specific \texttt{progress\_callback} and algorithm choice. \\
 \bottomrule
 \end{tabularx}
 
@@ -537,8 +561,8 @@ A BFS search can take minutes. Without progress updates, the client has no idea:
     \item \textbf{Task creates a callback function} that updates Celery task state.
     \item \textbf{Callback is injected} into \texttt{PathFindingService} via constructor.
     \item \textbf{BFS passes an \texttt{on\_page\_fetched} closure} into \texttt{get\_links\_bulk}.
-    \item \textbf{Wikipedia client fires the closure} from worker threads as each API response arrives.
-    \item \textbf{Client polls} \texttt{/tasks/status/<id>} and sees real-time progress spread across the fetch window.
+    \item \textbf{Wikipedia client fires the closure} from worker threads as each API response arrives (and also for cache hits), spreading updates across the fetch window.
+    \item \textbf{Client polls} \texttt{/tasks/status/<id>} and sees real-time progress.
 \end{enumerate}
 
 \subsection{Code Flow}
@@ -547,21 +571,22 @@ A BFS search can take minutes. Without progress updates, the client has no idea:
 
 \begin{lstlisting}[caption=tasks.py -- Creating the Progress Callback]
 @celery.task(bind=True)
-def find_path_task(self, start_page, end_page, algorithm="bfs"):
-    
-    # Define a closure that captures 'self' (the Celery task)
+def find_path_task(self, start_page, end_page, algorithm="bidirectional"):
+    max_depth = current_app.config.get("MAX_SEARCH_DEPTH", 6)
+
     def progress_update(progress_data):
-        self.update_state(
-            state="PROGRESS",
-            meta=progress_data  # Contains nodes_explored, current_depth, etc.
-        )
-    
-    # Pass the callback to the service factory
-    pathfinding_service = get_pathfinding_service(
-        algorithm=algorithm,
-        progress_callback=progress_update  # <-- Injected here
-    )
-    
+        # Normalise: pathfinders may emit a flat dict or one with search_stats
+        if "search_stats" not in progress_data:
+            progress_data = {
+                "status": "Searching...",
+                "search_stats": progress_data,
+            }
+        progress_data["search_stats"].setdefault("start_page", start_page)
+        progress_data["search_stats"].setdefault("end_page", end_page)
+        progress_data["search_stats"].setdefault("max_depth", max_depth)
+        self.update_state(state="PROGRESS", meta=progress_data)
+
+    pathfinding_service = get_pathfinding_service(algorithm, progress_update)
     result = pathfinding_service.find_path(search_request)
 \end{lstlisting}
 
@@ -569,113 +594,134 @@ def find_path_task(self, start_page, end_page, algorithm="bfs"):
 
 \begin{lstlisting}[caption=factory.py -- Injecting the Callback]
 @classmethod
-def create_pathfinding_service(cls, algorithm="bfs", progress_callback=None):
-    # ... get singletons ...
-    
-    path_finder = RedisBasedBFSPathFinder(
-        wikipedia_client,
-        cache_service,
-        queue_service,
-        max_depth,
-        batch_size,
-        progress_callback  # <-- Passed to the algorithm
-    )
-    
+def create_pathfinding_service(cls, algorithm="bidirectional", progress_callback=None):
+    wikipedia_client = cls.get_wikipedia_client()
+    cache_service = cls.get_cache_service()
+    queue_service = cls.get_queue_service()
+    max_depth = current_app.config.get("MAX_SEARCH_DEPTH", 6)
+    batch_size = current_app.config.get("BFS_BATCH_SIZE", 50)
+
+    if algorithm.lower() == "bidirectional":
+        path_finder = BidirectionalBFSPathFinder(
+            wikipedia_client, cache_service, queue_service,
+            max_depth, batch_size, progress_callback
+        )
+    else:
+        path_finder = RedisBasedBFSPathFinder(
+            wikipedia_client, cache_service, queue_service,
+            max_depth, batch_size, progress_callback
+        )
+
     return PathFindingService(path_finder, cache_service, wikipedia_client)
 \end{lstlisting}
 
-\subsubsection{Step 3: BFS Passes a Closure into the Wikipedia Fetch}
+\subsubsection{Step 3: BFS Defines an \texttt{on\_page\_fetched} Closure}
 
-Rather than firing all progress updates before the Wikipedia API call (which bunches them into a tight loop invisible to polling clients), BFS defines an \texttt{on\_page\_fetched} closure and passes it into \texttt{get\_links\_bulk}.  The Wikipedia client fires this closure \textbf{from worker threads} as each individual HTTP response arrives via \texttt{as\_completed}, spreading updates naturally across the network round-trip window.
+\begin{lstlisting}[caption=pathfinding.py -- on\_page\_fetched Closure (RedisBasedBFS)]
+nodes_explored = 0
+nodes_lock = threading.Lock()   # guards concurrent increments from thread pool
 
-\begin{lstlisting}[caption=pathfinding.py -- on\_page\_fetched Closure]
-def _perform_bfs_search(self, start_page, end_page, ...):
-    nodes_explored = 0
-    nodes_lock = threading.Lock()  # guards against concurrent increments
+while self.queue_service.length(queue_key) > 0:
+    batch_items = self.queue_service.pop_batch(queue_key, self.batch_size)
+    current_depth = batch_items[0]["depth"]
 
-    while self.queue_service.length(queue_key) > 0:
-        batch_items = self.queue_service.pop_batch(queue_key, self.batch_size)
-        current_depth = batch_items[0]["depth"]
+    on_page_fetched: Callable | None = None
+    if self.progress_callback:
+        def _on_page_fetched(title, _links, *, _d=current_depth):
+            # Default arg binds current_depth by VALUE at def time (avoids B023 late-binding).
+            # Called concurrently from ThreadPoolExecutor threads.
+            nonlocal nodes_explored
+            with nodes_lock:
+                nodes_explored += 1
+                count = nodes_explored
+            self.progress_callback({
+                "status": "Searching...",
+                "search_stats": {
+                    "nodes_explored": count,
+                    "current_depth": _d,
+                    "last_node": title,
+                    "queue_size": self.queue_service.length(queue_key),
+                },
+                "search_time_elapsed": round(time.time() - search_start_time, 2),
+            })
+        on_page_fetched = _on_page_fetched
 
-        # Pre-declare so the type-checker sees Callable | None across branches.
-        on_page_fetched: Callable[[str, list[str]], None] | None = None
-        if self.progress_callback:
-
-            def _on_page_fetched(
-                title: str,
-                _links: list[str],
-                *,
-                _d: int = current_depth,  # default arg binds value at def time
-            ) -> None:
-                nonlocal nodes_explored
-                with nodes_lock:
-                    nodes_explored += 1
-                    count = nodes_explored
-                self.progress_callback({
-                    "status": "Searching...",
-                    "search_stats": {
-                        "nodes_explored": count,
-                        "current_depth": _d,
-                        "last_node": title,
-                        # NOTE: stale within batch -- see note below
-                        "queue_size": self.queue_service.length(queue_key),
-                    },
-                    "search_time_elapsed": round(time.time() - start_time, 2),
-                })
-
-            on_page_fetched = _on_page_fetched
-
-        # on_page_fetched fires inside the thread pool as each page resolves
-        links_bulk = self.wikipedia_client.get_links_bulk(
-            [item["page"] for item in batch_items], on_page_fetched
-        )
-        # ... process each page's links ...
+    links_bulk = self.wikipedia_client.get_links_bulk(page_names, on_page_fetched)
+    # When no progress callback: increment counter here instead of in the closure.
+    if on_page_fetched is None:
+        nodes_explored += len(batch_items)
 \end{lstlisting}
 
-\begin{lstlisting}[caption=wikipedia.py -- Firing the Callback via as\_completed]
-def _fetch_from_wikipedia(self, page_titles, on_page_fetched=None):
+\subsubsection{Step 4: Wikipedia Client Fires the Closure via \texttt{as\_completed}}
+
+\begin{lstlisting}[caption=wikipedia.py -- \_bulk\_fetch firing on\_page\_fetched]
+def _bulk_fetch(self, page_titles, cache_prefix, fetch_fn, on_page_fetched):
     results = {}
+    uncached_titles = []
+
+    # Cache hits fire the callback immediately
+    if self.cache_service:
+        for title in page_titles:
+            cached = self.cache_service.get(f"{cache_prefix}:{title}")
+            if cached is not None:
+                results[title] = cached
+                if on_page_fetched:
+                    on_page_fetched(title, cached)   # fires for cache hit too
+            else:
+                uncached_titles.append(title)
+
+    # Cache misses: parallel fetch with as_completed
     with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
         future_to_title = {
-            executor.submit(self._fetch_single_page, title): title
-            for title in page_titles
+            executor.submit(bound_fetch_fn, title): title
+            for title in uncached_titles
         }
         for future in as_completed(future_to_title):
             title = future_to_title[future]
-            page_result = future.result()
+            page_result = future.result()   # raises WikipediaAPIError on failure
             results.update(page_result)
             if on_page_fetched:
                 on_page_fetched(title, page_result.get(title, []))
+
+    # Cache fresh results
+    for title, links in fresh_results.items():
+        self.cache_service.set(f"{cache_prefix}:{title}", links, ttl=self.cache_ttl)
     return results
 \end{lstlisting}
 
-\noindent\textbf{Why this works:} With \texttt{executor.map} all results are collected before returning, so callbacks would still bunch together.  \texttt{as\_completed} yields each future the moment its HTTP response arrives --- progress updates are spread across the \textasciitilde500--2000\,ms fetch window, giving the polling client genuinely smooth feedback.
+\noindent\textbf{Why \texttt{as\_completed} instead of \texttt{executor.map}:} \texttt{map} collects all results before yielding, so callbacks would bunch together at the end. \texttt{as\_completed} yields each future the moment its HTTP response arrives --- updates are spread across the 500--2000\,ms fetch window, giving the polling client genuinely smooth feedback.
 
-\noindent\textbf{Thread safety:} \texttt{on\_page\_fetched} is called concurrently from multiple worker threads.  \texttt{nodes\_lock} (a \texttt{threading.Lock}) ensures \texttt{nodes\_explored} is incremented atomically.  \texttt{update\_state} writes to Redis, which is inherently thread-safe.
+\noindent\textbf{Why cache hits also fire the callback:} If most of a batch is cached, the thread pool finishes almost instantly and the callback would never fire. Firing for cache hits ensures the client always gets progress updates even in warm-cache scenarios.
 
-\noindent\textbf{Loop variable capture (B023):} Python closures capture variables by reference, not by value. If \texttt{current\_depth} were referenced as a free variable inside the closure, all threads would see whatever value it holds when they \emph{execute}, not when the closure was \emph{defined} --- a classic late-binding bug. Binding it as a keyword-only default argument (\texttt{\_d=current\_depth}) forces evaluation at definition time, making each iteration's closure hold its own snapshot of the depth.
+\noindent\textbf{Thread safety:} \texttt{on\_page\_fetched} is called concurrently from multiple worker threads. \texttt{nodes\_lock} ensures \texttt{nodes\_explored} is incremented atomically. \texttt{update\_state} writes to Redis, which is inherently thread-safe.
 
-\noindent\textbf{Queue size during the fetch phase is stale.}  \texttt{on\_page\_fetched} fires \emph{during} the Wikipedia fetch, before the link-processing loop has pushed any new nodes.  The \texttt{queue\_size} at that point reflects the queue after \texttt{pop\_batch} removed the current batch but before any new discoveries are enqueued — it will read lower than reality until the next batch starts.
+\noindent\textbf{Loop variable capture (B023):} Python closures capture variables by reference. If \texttt{current\_depth} were referenced as a free variable inside the closure, all threads would see whatever value it holds when they \emph{execute} (the next batch's depth), not when the closure was \emph{defined}. Binding it as a keyword-only default argument (\texttt{\_d=current\_depth}) forces evaluation at definition time, making each iteration's closure hold its own snapshot.
 
-\subsubsection{Step 3b: Link-Processing Callbacks Close the UI Gap}
+\subsubsection{Step 4b: Link-Processing Callbacks Close the UI Gap}
 
-After \texttt{get\_links\_bulk} returns, the link-processing loop runs: for each of the 50 pages, it checks the visited set, stores new paths in Redis, and pushes newly discovered nodes onto the queue.  This loop is entirely Redis round-trips and can take several seconds for pages with hundreds of links.  No Wikipedia fetch is in flight during this time, so without intervention the client would stall — polling every second and seeing unchanged values.
+After \texttt{get\_links\_bulk} returns, the link-processing loop runs: for each of the 50 pages, it checks the visited set, stores new parent links in Redis, and pushes newly discovered nodes onto the queue. This loop is entirely Redis round-trips and can take several seconds for pages with hundreds of links. No Wikipedia fetch is in flight during this time, so without intervention the client would stall.
 
-To prevent this, \texttt{progress\_callback} is fired once per page \emph{after} its links have been enqueued.  At that point \texttt{queue\_size} reflects the newly added nodes, so the client sees the queue growing in real time:
+To prevent this, \texttt{progress\_callback} is fired once per page \emph{after} its links have been enqueued. At that point \texttt{queue\_size} reflects the newly added nodes:
 
-\begin{lstlisting}[caption=pathfinding.py -- Link-Processing Callbacks]
+\begin{lstlisting}[caption=pathfinding.py -- Per-page callback during link processing]
 for item in batch_items:
     current_page = item["page"]
     links = links_bulk.get(current_page, [])
-    current_path = self.cache_service.get(f"{paths_key}:{current_page}")
 
     for link in links:
         if link == end_page:
-            return {"path": current_path + [link], ...}
-        # check visited, store path, push to queue ...
+            # Store parent and reconstruct immediately
+            self.cache_service.hash_set(parent_key, link, current_page)
+            final_path = self._reconstruct_path(end_page, parent_key)
+            return {"path": final_path, "nodes_explored": nodes_explored}
 
-    # Fire after all links for this page are enqueued.
-    # queue_size now reflects the newly added nodes.
+        if not self.cache_service.set_contains(visited_key, link):
+            self.cache_service.set_add(visited_key, link)
+            self.cache_service.hash_set(parent_key, link, current_page)
+            self.queue_service.push(queue_key,
+                {"page": link, "depth": item["depth"] + 1})
+
+    # Fire after all links for this page are enqueued -- queue_size is now accurate.
     if self.progress_callback:
         self.progress_callback({
             "status": "Searching...",
@@ -685,20 +731,21 @@ for item in batch_items:
                 "last_node": current_page,
                 "queue_size": self.queue_service.length(queue_key),
             },
-            "search_time_elapsed": round(time.time() - start_time, 2),
+            "search_time_elapsed": round(time.time() - search_start_time, 2),
         })
 \end{lstlisting}
 
-\noindent\textbf{Combined update rate per batch:}
+\subsubsection{Path Reconstruction via Parent Hash}
+
+The BFS never stores explicit path lists. Instead, it records each discovered node's parent in a Redis hash:
 \begin{itemize}[leftmargin=*, nosep]
-    \item \textbf{During Wikipedia fetch:} up to 50 callbacks fired from worker threads as HTTP responses arrive via \texttt{as\_completed}.
-    \item \textbf{During link processing:} 50 callbacks fired sequentially, one per page, as its links are enqueued.
-    \item \textbf{Total:} up to 100 \texttt{update\_state} Redis writes per batch.  With the client polling every 1\,s and each batch taking 2--8\,s, the client observes meaningfully different state on every poll throughout the entire batch.
+    \item \textbf{Key:} \texttt{bfs\_parent:<uuid>} (a single Redis hash per search)
+    \item \textbf{Field:} child page title; \textbf{Value:} parent page title
 \end{itemize}
 
-\noindent\textbf{Redis cost is negligible.}  Each callback is 1 \texttt{SET} (\texttt{update\_state}) + 1 \texttt{LLEN} (\texttt{queue\_size}) = 2 ops.  100 callbacks = 200 extra ops per batch.  The link-processing loop itself already performs $\sim$60\,000 Redis ops per batch (visited checks, path stores, queue pushes).  The callbacks add $<$0.4\% overhead regardless of the number of concurrent searches.
+At the end, \texttt{\_reconstruct\_path(end\_page, parent\_key)} walks the hash backwards until it reaches \texttt{start\_page} (which has no parent entry), then reverses the list.
 
-\subsubsection{Step 4: Client Sees Progress via Polling}
+\subsubsection{Step 5: Client Sees Progress via Polling}
 
 \begin{lstlisting}[caption=Client Polling Response]
 GET /tasks/status/abc-123
@@ -712,34 +759,49 @@ GET /tasks/status/abc-123
             "nodes_explored": 42,
             "current_depth": 3,
             "last_node": "Machine learning",
-            "queue_size": 150
+            "queue_size": 150,
+            "start_page": "Python (programming language)",
+            "end_page": "Alan Turing",
+            "max_depth": 6
         },
         "search_time_elapsed": 5.2
     }
 }
 \end{lstlisting}
 
-\subsection{Architecture Diagram: Callback Flow}
+\subsection{Bidirectional BFS Progress: BidirProgressAggregator}
 
-\begin{center}
-\begin{tikzpicture}[
-    node distance=0.8cm,
-    box/.style={draw, rounded corners, minimum width=3cm, minimum height=0.8cm, align=center, font=\scriptsize},
-    arrow/.style={->, thick, >=stealth},
-    darrow/.style={->, thick, >=stealth, dashed, color=accentgreen}
-]
-    \node[box, fill=accentblue!20] (task) {Celery Task};
-    \node[box, fill=accentgreen!20, below=of task] (factory) {ServiceFactory};
-    \node[box, fill=warningorange!20, below=of factory] (pathfinder) {BFSPathFinder};
-    \node[box, fill=codegray!20, right=2.5cm of pathfinder] (redis) {Redis (Task State)};
-    \node[box, fill=accentblue!20, right=2.5cm of task] (client) {Client Polling};
-    
-    \draw[arrow] (task) -- node[left, font=\scriptsize] {creates callback} (factory);
-    \draw[arrow] (factory) -- node[left, font=\scriptsize] {injects callback} (pathfinder);
-    \draw[darrow] (pathfinder) -- node[above, font=\scriptsize] {callback writes} (redis);
-    \draw[darrow] (redis) -- node[right, font=\scriptsize] {reads state} (client);
-\end{tikzpicture}
-\end{center}
+The bidirectional pathfinder runs two concurrent frontiers. \texttt{BidirProgressAggregator} sits between them and the single progress callback:
+
+\begin{lstlisting}[caption=pathfinding.py -- BidirProgressAggregator]
+class BidirProgressAggregator:
+    def __init__(self, callback, queue_service, fwd_q, bwd_q):
+        self._callback = callback
+        self._queue_service = queue_service
+        self._fwd_q, self._bwd_q = fwd_q, bwd_q
+        self._fwd_nodes = self._bwd_nodes = 0
+        self._lock = threading.Lock()
+
+    def record(self, title: str, depth: int, direction: str) -> None:
+        with self._lock:
+            if direction == "forward":
+                self._fwd_nodes += 1
+            else:
+                self._bwd_nodes += 1
+            combined_queue = (self._queue_service.length(self._fwd_q)
+                              + self._queue_service.length(self._bwd_q))
+            self._callback({
+                "nodes_explored": self._fwd_nodes + self._bwd_nodes,
+                "queue_size": combined_queue,
+                "current_depth": depth,
+                "last_node": title,
+                "direction": direction,
+            })
+
+    @property
+    def total_nodes(self) -> int:
+        return self._fwd_nodes + self._bwd_nodes
+\end{lstlisting}
 
 \subsection{Why This Design?}
 
@@ -772,23 +834,32 @@ No Polling Inside Worker & Worker doesn't poll; it pushes. Client pulls on its o
 class ServiceFactory:
     _redis_client = None      # Singleton storage
     _cache_service = None
+    _queue_service = None
     _wikipedia_client = None
-    
+
     @classmethod
     def get_cache_service(cls):
         if cls._cache_service is None:
             redis_client = cls.get_redis_client()
-            cls._cache_service = RedisCache(redis_client)
+            cache_ttl = current_app.config.get("CACHE_TTL", 86400)
+            cls._cache_service = RedisCache(redis_client, cache_ttl)
         return cls._cache_service
-    
+
     @classmethod
-    def create_pathfinding_service(cls, algorithm="bfs", progress_callback=None):
-        # Retrieve singletons, then inject into new instance
-        wiki = cls.get_wikipedia_client()
-        cache = cls.get_cache_service()
-        queue = cls.get_queue_service()
-        
-        path_finder = RedisBasedBFSPathFinder(wiki, cache, queue, progress_callback)
+    def create_pathfinding_service(cls, algorithm="bidirectional", progress_callback=None):
+        wiki   = cls.get_wikipedia_client()
+        cache  = cls.get_cache_service()
+        queue  = cls.get_queue_service()
+        max_depth  = current_app.config.get("MAX_SEARCH_DEPTH", 6)
+        batch_size = current_app.config.get("BFS_BATCH_SIZE", 50)
+
+        if algorithm.lower() == "bidirectional":
+            path_finder = BidirectionalBFSPathFinder(
+                wiki, cache, queue, max_depth, batch_size, progress_callback)
+        else:
+            path_finder = RedisBasedBFSPathFinder(
+                wiki, cache, queue, max_depth, batch_size, progress_callback)
+
         return PathFindingService(path_finder, cache, wiki)
 \end{lstlisting}
 
@@ -812,15 +883,15 @@ To use Memcached instead of Redis:
 \toprule
 \normalfont\textbf{File} & \textbf{Purpose} \\
 \midrule
-app/core/pathfinding.py & \textbf{CORE ALGORITHM}. Redis-based BFS. Modify for algorithm changes. \\
+app/core/pathfinding.py & \textbf{CORE ALGORITHM}. \texttt{RedisBasedBFSPathFinder} (forward BFS) and \texttt{BidirectionalBFSPathFinder} (bidir BFS). Also \texttt{BidirProgressAggregator}. \\
 \addlinespace[0.3em]
-app/core/services.py & Business orchestration. Cache checking, validation, timing. \\
+app/core/services.py & Business orchestration. Cache checking, validation, timing. \texttt{PathFindingService}, \texttt{WikipediaService}, \texttt{CacheManagementService}. \\
 \addlinespace[0.3em]
 app/core/factory.py & DI container. Manages singletons and object creation. \\
 \addlinespace[0.3em]
 app/core/interfaces.py & Abstract contracts for testability and loose coupling. \\
 \addlinespace[0.3em]
-app/core/models.py & Dataclasses for requests, results, and DTOs. \\
+app/core/models.py & Dataclasses: \texttt{PathResult}, \texttt{SearchRequest}, \texttt{WikipediaPage}, \texttt{TaskStatus}, \texttt{HealthStatus}, \texttt{CacheStats}. \\
 \bottomrule
 \end{tabularx}
 
@@ -830,13 +901,13 @@ app/core/models.py & Dataclasses for requests, results, and DTOs. \\
 \toprule
 \normalfont\textbf{File} & \textbf{Purpose} \\
 \midrule
-app/infrastructure/cache.py & Redis cache implementation with connection pooling. \\
+app/infrastructure/cache.py & \texttt{RedisCache}: JSON-serialised get/set/delete, set operations (\texttt{set\_add}, \texttt{set\_contains}, \texttt{set\_contains\_many}, \texttt{set\_add\_many}), hash operations (\texttt{hash\_set}, \texttt{hash\_get}, \texttt{hash\_set\_many}), \texttt{delete\_many}, \texttt{clear\_pattern}. Pipeline used for batch ops. \\
 \addlinespace[0.3em]
-app/infrastructure/redis\_queue.py & FIFO queue for BFS state (push, pop, length). \\
+app/infrastructure/redis\_queue.py & \texttt{RedisQueue}: FIFO queue for BFS state (\texttt{push}, \texttt{pop}, \texttt{push\_batch}, \texttt{pop\_batch}, \texttt{length}, \texttt{clear}). Pipeline used for batch ops. \\
 \addlinespace[0.3em]
-app/infrastructure/tasks.py & Celery task definitions with retry logic and progress updates. \\
+app/infrastructure/tasks.py & Celery task definitions: \texttt{find\_path\_task} (main), \texttt{health\_check\_task}, \texttt{cache\_cleanup\_task}. Retry logic (\texttt{autoretry\_for} + manual retry with exponential backoff). Progress updates via \texttt{update\_state}. \\
 \addlinespace[0.3em]
-app/external/wikipedia.py & Wikipedia API client with bulk fetching and redirect handling. \\
+app/external/wikipedia.py & \texttt{WikipediaClient}: \texttt{get\_links\_bulk}, \texttt{get\_backlinks\_bulk}, \texttt{get\_page\_info}, \texttt{get\_page\_with\_redirect\_info}. Shared \texttt{\_bulk\_fetch} scaffold with cache, thread pool, \texttt{as\_completed}. Per-request rate limiting and exponential backoff. \\
 \bottomrule
 \end{tabularx}
 
@@ -849,21 +920,95 @@ app/external/wikipedia.py & Wikipedia API client with bulk fetching and redirect
 \toprule
 \normalfont\textbf{Key Pattern} & \textbf{TTL} & \textbf{Purpose} \\
 \midrule
-wiki\_links:\{page\} & 24h & Caches Wikipedia page links. High reuse. \\
-path:\{start\}:\{end\} & 1h & Caches completed path results. \\
-bfs\_visited:<uuid>:* & 1h & Temporary visited set. Cleaned after search. \\
-bfs\_paths:<uuid>:* & 1h & Temporary path tracking. Cleaned after search. \\
-bfs\_queue:<uuid> & Session & BFS queue. Explicitly deleted after search. \\
+wiki\_links:\{page\} & 24h & Caches outgoing links for a Wikipedia page (\texttt{get\_links\_bulk}). \\
+wiki\_backlinks:\{page\} & 24h & Caches backlinks (``what links here'') for a page (\texttt{get\_backlinks\_bulk}). \\
+path:\{start\}:\{end\} & 1h & Caches completed path results to avoid re-searching. \\
+page\_info:\{page\} & 2h & Caches page metadata (\texttt{WikipediaService.get\_page\_info}). \\
+bfs\_queue:\{uuid\} & Deleted & BFS frontier queue. Explicitly cleaned in \texttt{finally} block after search. \\
+bfs\_visited:\{uuid\} & Deleted & Redis set of visited page titles for the search session. \\
+bfs\_parent:\{uuid\} & Deleted & Redis hash mapping child $\rightarrow$ parent for path reconstruction. \\
+bfs\_fwd\_queue:\{sid\} & Deleted & Forward queue for bidirectional BFS. \\
+bfs\_bwd\_queue:\{sid\} & Deleted & Backward queue for bidirectional BFS. \\
+bfs\_fwd\_visited:\{sid\} & Deleted & Forward visited set for bidirectional BFS. \\
+bfs\_bwd\_visited:\{sid\} & Deleted & Backward visited set for bidirectional BFS. \\
+bfs\_fwd\_parent:\{sid\} & Deleted & Forward parent hash for bidirectional BFS. \\
+bfs\_bwd\_parent:\{sid\} & Deleted & Backward parent hash for bidirectional BFS. \\
 \bottomrule
 \end{tabularx}
 
+\begin{notebox}
+The \texttt{cache\_cleanup\_task} Celery Beat job sweeps \texttt{bfs\_*} keys hourly to clean up any orphaned search state from crashed workers. Normal search completion deletes keys immediately in a \texttt{finally} block.
+\end{notebox}
+
 % ============================================
-% SECTION 9: INTERVIEW Q&A CHEAT SHEET
+% SECTION 9: TESTING ARCHITECTURE
+% ============================================
+\section{Testing Architecture}
+
+\begin{notebox}
+All tests run with \textbf{no real Redis and no real Wikipedia API calls}. Everything external is mocked.
+\end{notebox}
+
+\subsection{Directory Structure}
+
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily}l X@{}}
+\toprule
+\normalfont\textbf{File} & \textbf{What it tests} \\
+\midrule
+tests/conftest.py & Shared fixtures: app, client, all mock services. \\
+tests/unit/test\_models.py & Dataclass validation logic (\texttt{PathResult.is\_valid}, \texttt{SearchRequest.validate}). \\
+tests/unit/test\_exceptions.py & Every custom exception class and its message format. \\
+tests/unit/test\_cache\_impl.py & \texttt{RedisCache} against a mock Redis client: get/set/delete, set ops, hash ops, pipeline batching, error propagation. \\
+tests/unit/test\_redis\_queue\_impl.py & \texttt{RedisQueue} push/pop/batch/clear against mock Redis. \\
+tests/unit/test\_external\_wikipedia\_client.py & \texttt{WikipediaClient}: cache hits/misses, link filtering, redirect/disambiguation handling, backoff behaviour. \\
+tests/unit/test\_factory\_and\_tasks\_config.py & \texttt{ServiceFactory} lifecycle (create, singleton reuse, cleanup). Celery task routing config. \\
+tests/unit/test\_tasks.py & All branches of \texttt{find\_path\_task}, \texttt{health\_check\_task}, \texttt{cache\_cleanup\_task} via Celery eager execution. \\
+tests/unit/test\_middleware\_and\_logging.py & All middleware decorators (error handling, CORS, rate limiting, request size). \\
+tests/integration/test\_api\_endpoints.py & Flask routes end-to-end with mocked Celery tasks. \\
+tests/integration/test\_services.py & \texttt{PathFindingService}, \texttt{WikipediaService}, \texttt{CacheManagementService} with mocked dependencies. \\
+tests/integration/test\_pathfinding.py & BFS algorithms with stateful mock queue + cache. Also \texttt{BidirProgressAggregator}. \\
+\bottomrule
+\end{tabularx}
+
+\subsection{Mock Fixture Design}
+
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily}l X@{}}
+\toprule
+\normalfont\textbf{Fixture} & \textbf{Strategy} \\
+\midrule
+mock\_redis & Raw \texttt{Mock()} with a hand-rolled \texttt{\_MockPipeline} that supports \texttt{rpush}/\texttt{lpop}/\texttt{execute} and context manager protocol. \\
+mock\_cache\_service & Stateful: backed by an in-memory \texttt{dict} (get/set), \texttt{dict[str,set]} (set ops), and \texttt{dict[str,dict]} (hash ops). Behaves identically to \texttt{RedisCache} from the caller's perspective. \\
+mock\_queue\_service & Stateful: backed by an in-memory \texttt{dict[str, list]}. Supports push/pop/push\_batch/pop\_batch/length/clear. \\
+mock\_wikipedia\_client & Simple \texttt{Mock()} with default return values. Tests override specific methods as needed. \\
+mock\_path\_finder & \texttt{Mock()} with \texttt{find\_path.return\_value = \{"path": [...], "nodes\_explored": 10\}}. \\
+mock\_celery\_task & Context manager that patches \texttt{find\_path\_task} in \texttt{routes.py} namespace. Exposes \texttt{mock\_async\_result} for state simulation. \\
+celery\_memory\_backend & Sets \texttt{task\_always\_eager=True} + \texttt{result\_backend="cache+memory://"} for task tests. Resets after test. \\
+\bottomrule
+\end{tabularx}
+
+\subsection{Testing Celery Tasks}
+
+Tasks are exercised via \texttt{task.apply(args=[...]).result} which runs them synchronously in the current process. The \texttt{celery\_memory\_backend} fixture enables \texttt{task\_always\_eager=True} so \texttt{update\_state} works without a live Redis connection.
+
+Key patterns:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Happy path:} Patch \texttt{get\_pathfinding\_service} to return a mock that returns a \texttt{PathResult}. Assert \texttt{result["status"] == "SUCCESS"}.
+    \item \textbf{Page not found:} Mock \texttt{validate\_pages} to return \texttt{(False, True, \{\})}. Assert \texttt{result["code"] == "PAGE\_NOT\_FOUND"}.
+    \item \textbf{Max retries:} Call \texttt{task.apply(args=[...], retries=3)} to set \texttt{self.request.retries == max\_retries}. Assert \texttt{result["code"] == "MAX\_RETRIES\_EXCEEDED"}.
+    \item \textbf{Progress callback:} Assert that the second argument passed to \texttt{get\_pathfinding\_service} is callable.
+\end{itemize}
+
+\subsection{Coverage}
+
+Current overall coverage: \textbf{89\%}. Key uncovered lines are in \texttt{app/\_\_init\_\_.py} (Celery integration initialisation) and some wikipedia.py pagination and error paths that require careful network simulation.
+
+% ============================================
+% SECTION 10: INTERVIEW Q&A CHEAT SHEET
 % ============================================
 \section{Interview Q\&A Cheat Sheet}
 
 \begin{qabox}{If you had to modify the core pathfinding algorithm, where would you go?}
-\textbf{Answer:} \texttt{app/core/pathfinding.py} -- specifically the \texttt{RedisBasedBFSPathFinder} class and its \texttt{find\_path()} method.
+\textbf{Answer:} \texttt{app/core/pathfinding.py} -- specifically \texttt{RedisBasedBFSPathFinder.\_perform\_bfs\_search()} for forward BFS, or \texttt{BidirectionalBFSPathFinder.\_expand\_forward\_batch()} / \texttt{\_expand\_backward\_batch()} for bidirectional BFS.
 \end{qabox}
 
 \begin{qabox}{When and where do services get initialized?}
@@ -873,20 +1018,31 @@ bfs\_queue:<uuid> & Session & BFS queue. Explicitly deleted after search. \\
 \begin{qabox}{Which objects are reused vs. created fresh?}
 \textbf{Answer:}
 \begin{itemize}[leftmargin=*, nosep]
-    \item \textbf{Reused (Singletons):} Redis Client, Wikipedia Client, Cache Service. Maintains connection pools.
-    \item \textbf{Fresh (Transient):} PathFindingService. New per task for isolated callbacks.
+    \item \textbf{Reused (Singletons):} Redis Client, Wikipedia Client, Cache Service, Queue Service. Maintains connection pools and rate-limiter state.
+    \item \textbf{Fresh (Transient):} PathFindingService and its PathFinder. New per task for isolated callbacks and algorithm selection.
 \end{itemize}
 \end{qabox}
 
 \begin{qabox}{How does the progress callback work?}
-\textbf{Answer:} 
+\textbf{Answer:}
 \begin{enumerate}[leftmargin=*, nosep]
-    \item Celery task defines a closure that calls \texttt{self.update\_state()}.
+    \item Celery task defines a closure that calls \texttt{self.update\_state(state="PROGRESS", meta=...)}.
     \item This closure is passed to \texttt{ServiceFactory.create\_pathfinding\_service()}.
-    \item Factory injects it into \texttt{RedisBasedBFSPathFinder} constructor.
-    \item BFS calls the callback every N nodes, writing progress to Redis.
-    \item Client polls \texttt{/tasks/status/<id>} to read progress.
+    \item Factory injects it into \texttt{RedisBasedBFSPathFinder} (or \texttt{BidirectionalBFSPathFinder}) constructor.
+    \item BFS defines an \texttt{on\_page\_fetched} closure that it passes to \texttt{get\_links\_bulk}.
+    \item Wikipedia client fires the closure for each page as its response arrives (via \texttt{as\_completed}) \emph{and} for cache hits.
+    \item A second callback fires after link processing per page (to report accurate queue size).
+    \item Client polls \texttt{/tasks/status/<id>} to read \texttt{state=PROGRESS} updates.
 \end{enumerate}
+\end{qabox}
+
+\begin{qabox}{Explain the two BFS algorithms and when each is used.}
+\textbf{Answer:}
+\begin{itemize}[leftmargin=*, nosep]
+    \item \textbf{bfs (RedisBasedBFSPathFinder):} Standard forward BFS. Expands from start page only, following outgoing links. Simple, predictable.
+    \item \textbf{bidirectional (BidirectionalBFSPathFinder):} Two frontiers expanding simultaneously. Forward follows outgoing links (\texttt{get\_links\_bulk}); backward follows backlinks (\texttt{get\_backlinks\_bulk} / Wikipedia's ``what links here''). Always expands the smaller frontier. Halts when a node appears in both visited sets. Path is forward\_path + backward\_chain stitched at the meeting node.
+    \item \textbf{Default:} \texttt{bidirectional}. Caller selects via the \texttt{algorithm} field in \texttt{POST /getPath}.
+\end{itemize}
 \end{qabox}
 
 \begin{qabox}{Why use Celery instead of handling pathfinding synchronously?}
@@ -904,9 +1060,9 @@ Celery enables horizontal scaling, resilience, and real-time progress.
 \begin{itemize}[leftmargin=*, nosep]
     \item Offloads memory from worker process.
     \item Enables inspection via Redis CLI.
-    \item Provides crash-recovery potential (state persists).
+    \item Provides crash-recovery potential (state persists in Redis if worker dies).
 \end{itemize}
-Trade-off: Network latency per operation (mitigated by batching).
+Trade-off: Network latency per operation (mitigated by batching with \texttt{pop\_batch}).
 \end{qabox}
 
 \begin{qabox}{How does the system scale horizontally?}
@@ -927,7 +1083,7 @@ Trade-off: Network latency per operation (mitigated by batching).
 \begin{itemize}[leftmargin=*, nosep]
     \item HTTP Keep-Alive (connection reuse).
     \item TLS session resumption (avoids 100-300ms handshake).
-    \item Cookie persistence if needed.
+    \item A shared rate-limiter lock + timestamp (ensures all threads from this process respect the rate limit globally).
 \end{itemize}
 Creating new clients per request would destroy these benefits.
 \end{qabox}
@@ -936,14 +1092,18 @@ Creating new clients per request would destroy these benefits.
 \textbf{Answer:}
 \begin{enumerate}[leftmargin=*, nosep]
     \item Create class implementing \texttt{PathFinderInterface} in \texttt{pathfinding.py}.
-    \item Add case in \texttt{ServiceFactory.create\_pathfinding\_service()}.
-    \item Update API schema to accept new algorithm name.
-    \item Add tests in \texttt{tests/integration/test\_pathfinding.py}.
+    \item Add an \texttt{elif} branch in \texttt{ServiceFactory.create\_pathfinding\_service()}.
+    \item Update \texttt{SearchRequestSchema} to accept the new algorithm name.
+    \item Add integration tests in \texttt{tests/integration/test\_pathfinding.py}.
 \end{enumerate}
 \end{qabox}
 
+\begin{qabox}{How are tests structured? What's mocked?}
+\textbf{Answer:} Tests live in \texttt{tests/unit/} (per-class) and \texttt{tests/integration/} (service interactions). No real Redis or Wikipedia calls. The \texttt{mock\_cache\_service} and \texttt{mock\_queue\_service} fixtures in \texttt{conftest.py} are \emph{stateful} in-memory mocks that behave identically to the real implementations. Celery tasks are tested via \texttt{task.apply()} in eager mode with an in-memory result backend.
+\end{qabox}
+
 % ============================================
-% SECTION 10: QUICK REFERENCE
+% SECTION 11: QUICK REFERENCE
 % ============================================
 \section{Quick Reference: Where to Make Changes}
 
@@ -951,19 +1111,21 @@ Creating new clients per request would destroy these benefits.
 \toprule
 Goal & Location \\
 \midrule
-Modify BFS algorithm & \texttt{app/core/pathfinding.py} \\
-Add new API endpoint & \texttt{app/api/routes.py} \\
+Modify forward BFS & \texttt{app/core/pathfinding.py} -- \texttt{RedisBasedBFSPathFinder} \\
+Modify bidirectional BFS & \texttt{app/core/pathfinding.py} -- \texttt{BidirectionalBFSPathFinder} \\
+Add new API endpoint & \texttt{app/api/routes.py} (add route + Flasgger YAML docstring) \\
 Change request validation & \texttt{app/api/schemas.py} \\
 Add new Celery task & \texttt{app/infrastructure/tasks.py} \\
-Swap cache implementation & Implement interface, update \texttt{factory.py} \\
+Swap cache implementation & Implement \texttt{CacheServiceInterface}, update \texttt{factory.py} \\
 Add new exception type & \texttt{app/utils/exceptions.py} \\
 Change configuration & \texttt{config/base.py} \\
 Modify Wikipedia API logic & \texttt{app/external/wikipedia.py} \\
+Add tests & \texttt{tests/unit/} for isolated class tests, \texttt{tests/integration/} for service interactions \\
 \bottomrule
 \end{tabularx}
 
 % ============================================
-% SECTION 11: API ENDPOINTS
+% SECTION 12: API ENDPOINTS
 % ============================================
 \section{API Endpoints Reference}
 
@@ -971,18 +1133,27 @@ Modify Wikipedia API logic & \texttt{app/external/wikipedia.py} \\
 \toprule
 \textbf{Method} & \normalfont\textbf{Endpoint} & \textbf{Description} \\
 \midrule
-POST & /getPath & Start pathfinding. Returns task ID. \\
-GET & /tasks/status/<id> & Poll for task status and progress. \\
-POST & /explore & Explore links from a page. \\
-GET & /health & System health check. \\
-GET & /api & API information. \\
-POST & /cache/clear & Admin: clear cache by pattern. \\
-GET & /api/docs & Swagger UI (interactive API documentation). \\
+POST   & /getPath & Start pathfinding. Returns task ID + poll URL (202 Accepted). \\
+GET    & /tasks/status/<id> & Poll for task status: PENDING, IN\_PROGRESS (PROGRESS state), SUCCESS, FAILURE, RETRY. \\
+GET    & /tasks & List all active, reserved, and scheduled Celery tasks across workers. Returns counts and raw task metadata. 503 if no workers reachable. \\
+DELETE & /tasks/<id> & Revoke (cancel) a specific task. Sends SIGTERM if already running (\texttt{?terminate=false} to skip). Returns 404 if task already in SUCCESS/FAILURE. \\
+DELETE & /tasks & Revoke all active and reserved tasks across all workers. Accepts same \texttt{?terminate} query param. \\
+GET    & /health & System health check: Redis ping, cache round-trip, Wikipedia client init. \\
+GET    & / & Serve static web UI (\texttt{static/index.html}). All non-API paths redirect here. \\
+GET    & /api & API metadata and endpoint list. \\
+GET    & /api/docs & Swagger UI (auto-assembled from YAML docstrings via Flasgger). \\
+POST   & /cache/clear & Admin: clear Redis cache by key pattern (default: \texttt{wiki\_links:*}). \\
 \bottomrule
 \end{tabularx}
 
+\begin{notebox}
+The \texttt{catch\_all} route (\texttt{/<path:path>}) redirects all unrecognised paths to \texttt{/}. Paths starting with \texttt{getPath}, \texttt{tasks}, \texttt{health}, \texttt{cache}, or \texttt{api} return a structured JSON 404 instead.
+
+Task management endpoints use \texttt{celery.control.inspect(timeout=2.0)} for listing and \texttt{celery.control.revoke()} for cancellation. The inspect call broadcasts to all workers and aggregates responses; a 2-second timeout avoids hanging the HTTP request when workers are unavailable.
+\end{notebox}
+
 % ============================================
-% SECTION 12: CONFIGURATION
+% SECTION 13: CONFIGURATION
 % ============================================
 \section{Configuration Reference}
 
@@ -990,13 +1161,17 @@ GET & /api/docs & Swagger UI (interactive API documentation). \\
 \toprule
 \normalfont\textbf{Variable} & \textbf{Default} & \textbf{Description} \\
 \midrule
-REDIS\_URL & localhost:6379 & Redis connection URL. \\
-MAX\_SEARCH\_DEPTH & 6 & Maximum BFS depth. \\
-BFS\_BATCH\_SIZE & 50 & Pages per batch in BFS. \\
-CACHE\_TTL & 86400 & Default cache TTL (24h). \\
-WIKIPEDIA\_MAX\_WORKERS & 10 & Thread pool for Wikipedia API. \\
-CELERY\_TASK\_SOFT\_TIME\_LIMIT & 300 & Soft timeout (5m). \\
-CELERY\_TASK\_TIME\_LIMIT & 600 & Hard timeout (10m). \\
+REDIS\_URL & redis://localhost:6379/0 & Redis connection URL. \\
+MAX\_SEARCH\_DEPTH & 6 & Maximum BFS depth before giving up. \\
+BFS\_BATCH\_SIZE & 50 & Pages per batch popped from queue. \\
+CACHE\_TTL & 86400 & Default cache TTL for wiki\_links (24h). \\
+WIKIPEDIA\_MAX\_WORKERS & 10 & Thread pool size for parallel Wikipedia API calls. \\
+WIKIPEDIA\_MAX\_PAGINATE\_CALLS & 3 & Pagination calls per page (3 $\times$ 500 = 1500 links max). \\
+WIKIPEDIA\_REQUEST\_DELAY & 0.1 & Minimum seconds between Wikipedia requests (rate limit). \\
+WIKIPEDIA\_BACKOFF\_MAX\_RETRIES & 5 & Max retry attempts with exponential backoff. \\
+CELERY\_TASK\_SOFT\_TIME\_LIMIT & 300 & Soft timeout for pathfinding task (5 min). \\
+CELERY\_TASK\_TIME\_LIMIT & 600 & Hard timeout for pathfinding task (10 min). \\
+LOG\_LEVEL & INFO & Logging level. \\
 \bottomrule
 \end{tabularx}
 

@@ -13,12 +13,10 @@ SWAGGER_TEMPLATE = {
         "license": {"name": "MIT"},
     },
     "basePath": "/",
-
     "consumes": ["application/json"],
     "produces": ["application/json"],
     "tags": [
         {"name": "Pathfinding", "description": "Find paths between Wikipedia pages"},
-        {"name": "Exploration", "description": "Explore page connections"},
         {"name": "System", "description": "Health and administration"},
     ],
 }

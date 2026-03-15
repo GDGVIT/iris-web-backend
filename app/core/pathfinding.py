@@ -65,13 +65,6 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         if start_page == end_page:
             return {"path": [start_page], "nodes_explored": 1}
 
-        # Check if pages exist
-        if not self.wikipedia_client.page_exists(start_page):
-            raise InvalidPageError(f"Start page '{start_page}' does not exist")
-
-        if not self.wikipedia_client.page_exists(end_page):
-            raise InvalidPageError(f"End page '{end_page}' does not exist")
-
         # Generate unique session ID for this search
         session_id = str(uuid.uuid4())
         queue_key = f"bfs_queue:{session_id}"
@@ -296,10 +289,9 @@ class BidirProgressAggregator:
                 self._fwd_nodes += 1
             else:
                 self._bwd_nodes += 1
-            combined_queue = (
-                self._queue_service.length(self._fwd_q)
-                + self._queue_service.length(self._bwd_q)
-            )
+            combined_queue = self._queue_service.length(
+                self._fwd_q
+            ) + self._queue_service.length(self._bwd_q)
             self._callback(
                 {
                     "nodes_explored": self._fwd_nodes + self._bwd_nodes,
@@ -356,12 +348,6 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         if start_page == end_page:
             return {"path": [start_page], "nodes_explored": 1}
 
-        if not self.wikipedia_client.page_exists(start_page):
-            raise InvalidPageError(f"Start page '{start_page}' does not exist")
-
-        if not self.wikipedia_client.page_exists(end_page):
-            raise InvalidPageError(f"End page '{end_page}' does not exist")
-
         sid = str(uuid.uuid4())[:8]
 
         fwd_q = f"bfs_fwd_queue:{sid}"
@@ -403,7 +389,10 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
                 bwd_max,
                 tracker,
             )
-            return {"path": path, "nodes_explored": tracker.total_nodes if tracker else 0}
+            return {
+                "path": path,
+                "nodes_explored": tracker.total_nodes if tracker else 0,
+            }
         finally:
             self.cache_service.delete_many(keys)
 
@@ -430,11 +419,25 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
 
             if bwd_size > 0 and (fwd_size == 0 or bwd_size < fwd_size):
                 meeting = self._expand_backward_batch(
-                    end_page, bwd_q, bwd_vis, bwd_par, fwd_vis, fwd_par, bwd_max, tracker
+                    end_page,
+                    bwd_q,
+                    bwd_vis,
+                    bwd_par,
+                    fwd_vis,
+                    fwd_par,
+                    bwd_max,
+                    tracker,
                 )
             else:
                 meeting = self._expand_forward_batch(
-                    start_page, fwd_q, fwd_vis, fwd_par, bwd_vis, bwd_par, fwd_max, tracker
+                    start_page,
+                    fwd_q,
+                    fwd_vis,
+                    fwd_par,
+                    bwd_vis,
+                    bwd_par,
+                    fwd_max,
+                    tracker,
                 )
 
             if meeting is not None:

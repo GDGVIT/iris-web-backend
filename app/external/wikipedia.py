@@ -1,9 +1,10 @@
+import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 
 import requests
-from flask import current_app
 
 from app.core.interfaces import CacheServiceInterface, WikipediaClientInterface
 from app.utils.exceptions import WikipediaAPIError
@@ -22,20 +23,108 @@ class WikipediaClient(WikipediaClientInterface):
         max_workers: int = 10,
         cache_ttl: int = 86400,  # 24 hours
         api_timeout: int = 15,
+        max_paginate_calls: int = 3,
+        request_delay: float = 0.1,
+        max_retries: int = 5,
     ):
         self.session = session or requests.Session()
         self.cache_service = cache_service
         self.max_workers = max_workers
         self.cache_ttl = cache_ttl
         self.api_timeout = api_timeout
+        self.max_paginate_calls = max_paginate_calls
+        self.request_delay = request_delay
+        self.max_retries = max_retries
         self.base_url = "https://en.wikipedia.org/w/api.php"
+
+        # Shared rate limiter — enforces minimum interval between all requests
+        # across every thread that shares this client instance.
+        self._rate_lock = threading.Lock()
+        self._last_request_time: float = 0.0
 
         # Configure session
         self.session.headers.update(
             {
-                "User-Agent": "Iris-Wikipedia-Pathfinder/1.0 (https://github.com/example/iris)"
+                "User-Agent": "Iris-Wikipedia-Pathfinder/1.0 (https://github.com/mdhishaamakhtar/iris-web-backend)"
             }
         )
+
+    def _acquire_rate_slot(self) -> None:
+        """Block until the global rate limit allows the next request.
+
+        Uses a single lock shared across all threads so that concurrent workers
+        cannot burst past the configured ``request_delay`` interval.  The lock
+        is held *during* any sleep so that a second thread cannot race in and
+        start its own request before the interval has elapsed.
+        """
+        if self.request_delay <= 0:
+            return
+        with self._rate_lock:
+            now = time.monotonic()
+            wait = self.request_delay - (now - self._last_request_time)
+            if wait > 0:
+                time.sleep(wait)
+            self._last_request_time = time.monotonic()
+
+    def _request_with_backoff(self, params: dict[str, str | int]) -> requests.Response:
+        """GET the Wikipedia API with exponential backoff on 429 and 5xx responses.
+
+        Retries up to ``self.max_retries`` times.  On a 429 the ``Retry-After``
+        header is respected when present; otherwise the backoff is ``2^attempt``
+        seconds.  Network-level errors (``RequestException``) are also retried.
+        Other 4xx errors are raised immediately as ``WikipediaAPIError``.
+        """
+        for attempt in range(self.max_retries):
+            self._acquire_rate_slot()
+            try:
+                response = self.session.get(
+                    self.base_url, params=params, timeout=self.api_timeout
+                )
+            except requests.RequestException as e:
+                if attempt == self.max_retries - 1:
+                    raise WikipediaAPIError(f"API request failed: {e}")
+                wait = 2**attempt
+                logger.warning(
+                    f"Request error (attempt {attempt + 1}/{self.max_retries}), "
+                    f"retrying in {wait}s: {e}"
+                )
+                time.sleep(wait)
+                continue
+
+            if response.status_code == 429:
+                if attempt == self.max_retries - 1:
+                    raise WikipediaAPIError(
+                        f"Rate limited after {self.max_retries} retries"
+                    )
+                wait = int(response.headers.get("Retry-After", 2 ** (attempt + 1)))
+                logger.warning(
+                    f"Rate limited (429), retrying in {wait}s "
+                    f"(attempt {attempt + 1}/{self.max_retries})"
+                )
+                time.sleep(wait)
+                continue
+
+            if response.status_code >= 500:
+                if attempt == self.max_retries - 1:
+                    raise WikipediaAPIError(
+                        f"Server error {response.status_code} after {self.max_retries} retries"
+                    )
+                wait = 2**attempt
+                logger.warning(
+                    f"Server error {response.status_code} "
+                    f"(attempt {attempt + 1}/{self.max_retries}), retrying in {wait}s"
+                )
+                time.sleep(wait)
+                continue
+
+            try:
+                response.raise_for_status()
+            except requests.HTTPError as e:
+                raise WikipediaAPIError(f"API error: {e}")
+
+            return response
+
+        raise WikipediaAPIError(f"API request failed after {self.max_retries} attempts")
 
     def _bulk_fetch(
         self,
@@ -86,12 +175,7 @@ class WikipediaClient(WikipediaClientInterface):
         if uncached_titles:
             fresh_results: dict[str, list[str]] = {}
 
-            # Read pagination config here (app context available), bind to fetch_fn
-            # so threads don't need to access current_app themselves.
-            max_paginate_calls = current_app.config.get(
-                "WIKIPEDIA_MAX_PAGINATE_CALLS", 10
-            )
-            bound_fetch = partial(fetch_fn, max_paginate_calls=max_paginate_calls)
+            bound_fetch = partial(fetch_fn, max_paginate_calls=self.max_paginate_calls)
 
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 future_to_title = {
@@ -183,24 +267,16 @@ class WikipediaClient(WikipediaClientInterface):
         max_pages = max_paginate_calls
         calls = 0
 
-        try:
-            while calls < max_pages:
-                response = self.session.get(
-                    self.base_url, params=params, timeout=self.api_timeout
-                )
-                response.raise_for_status()
-                data = response.json()
-                query_data = data.get("query", {})
-                page_links = self._parse_batch_response(query_data, [title])
-                all_links.extend(page_links.get(title, []))
-                calls += 1
-                if "continue" not in data:
-                    break
-                params["plcontinue"] = data["continue"]["plcontinue"]
-                params["continue"] = data["continue"]["continue"]
-        except requests.RequestException as e:
-            logger.error(f"Wikipedia API request failed for '{title}': {e}")
-            raise WikipediaAPIError(f"API request failed: {e}")
+        while calls < max_pages:
+            data = self._request_with_backoff(params).json()
+            query_data = data.get("query", {})
+            page_links = self._parse_batch_response(query_data, [title])
+            all_links.extend(page_links.get(title, []))
+            calls += 1
+            if "continue" not in data:
+                break
+            params["plcontinue"] = data["continue"]["plcontinue"]
+            params["continue"] = data["continue"]["continue"]
 
         return {title: all_links}
 
@@ -225,28 +301,20 @@ class WikipediaClient(WikipediaClientInterface):
         max_pages = max_paginate_calls
         calls = 0
 
-        try:
-            while calls < max_pages:
-                response = self.session.get(
-                    self.base_url, params=params, timeout=self.api_timeout
-                )
-                response.raise_for_status()
-                data = response.json()
-                backlinks = data.get("query", {}).get("backlinks", [])
-                all_backlinks.extend(
-                    bl["title"]
-                    for bl in backlinks
-                    if ":" not in bl.get("title", "")
-                    or bl.get("title", "").startswith("List of")
-                )
-                calls += 1
-                if "continue" not in data:
-                    break
-                params["blcontinue"] = data["continue"]["blcontinue"]
-                params["continue"] = data["continue"]["continue"]
-        except requests.RequestException as e:
-            logger.error(f"Wikipedia backlinks API request failed for '{title}': {e}")
-            raise WikipediaAPIError(f"API request failed: {e}")
+        while calls < max_pages:
+            data = self._request_with_backoff(params).json()
+            backlinks = data.get("query", {}).get("backlinks", [])
+            all_backlinks.extend(
+                bl["title"]
+                for bl in backlinks
+                if ":" not in bl.get("title", "")
+                or bl.get("title", "").startswith("List of")
+            )
+            calls += 1
+            if "continue" not in data:
+                break
+            params["blcontinue"] = data["continue"]["blcontinue"]
+            params["continue"] = data["continue"]["continue"]
 
         return {title: all_backlinks}
 

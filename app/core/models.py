@@ -35,38 +35,6 @@ class PathResult:
 
 
 @dataclass
-class ExploreResult:
-    """Result of an explore operation."""
-
-    start_page: str
-    nodes: list[str]
-    edges: list[tuple]
-    total_links: int
-
-    @property
-    def is_valid(self) -> bool:
-        """Check if the explore result is valid."""
-        return (
-            self.start_page in self.nodes
-            and len(self.nodes) > 0
-            and self.total_links >= 0
-        )
-
-
-@dataclass
-class TaskInfo:
-    """Information about a background task."""
-
-    task_id: str
-    status: TaskStatus
-    result: dict | None = None
-    error: str | None = None
-    progress: dict | None = None
-    created_at: str | None = None
-    updated_at: str | None = None
-
-
-@dataclass
 class SearchRequest:
     """Request for pathfinding search."""
 
@@ -82,18 +50,6 @@ class SearchRequest:
             and bool(self.end_page and self.end_page.strip())
             and self.start_page != self.end_page
         )
-
-
-@dataclass
-class ExploreRequest:
-    """Request for page exploration."""
-
-    start_page: str
-    max_links: int | None = None
-
-    def validate(self) -> bool:
-        """Validate the explore request."""
-        return bool(self.start_page and self.start_page.strip())
 
 
 @dataclass

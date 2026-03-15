@@ -14,13 +14,13 @@ class RedisCache(CacheServiceInterface):
     """Redis-based cache implementation."""
 
     def __init__(self, redis_client: redis.Redis, default_ttl: int = 86400):
-        self.redis_client = redis_client
+        self._redis_client = redis_client
         self.default_ttl = default_ttl
 
     def get(self, key: str) -> Any | None:
         """Get value from cache by key."""
         try:
-            value = self.redis_client.get(key)
+            value = self._redis_client.get(key)
             if value is None:
                 return None
             return json.loads(value)  # type: ignore[arg-type]
@@ -33,7 +33,7 @@ class RedisCache(CacheServiceInterface):
         try:
             ttl = ttl or self.default_ttl
             serialized_value = json.dumps(value)
-            self.redis_client.setex(key, ttl, serialized_value)
+            self._redis_client.setex(key, ttl, serialized_value)
         except (redis.RedisError, TypeError, ValueError) as e:
             logger.error(f"Failed to set value in cache for key {key}: {e}")
             raise CacheConnectionError(f"Cache set failed: {e}")
@@ -41,7 +41,7 @@ class RedisCache(CacheServiceInterface):
     def delete(self, key: str) -> None:
         """Delete key from cache."""
         try:
-            self.redis_client.delete(key)
+            self._redis_client.delete(key)
         except redis.RedisError as e:
             logger.error(f"Failed to delete key from cache: {key}: {e}")
             raise CacheConnectionError(f"Cache delete failed: {e}")
@@ -49,29 +49,17 @@ class RedisCache(CacheServiceInterface):
     def exists(self, key: str) -> bool:
         """Check if key exists in cache."""
         try:
-            return bool(self.redis_client.exists(key))
+            return bool(self._redis_client.exists(key))
         except redis.RedisError as e:
             logger.error(f"Failed to check key existence in cache: {key}: {e}")
             raise CacheConnectionError(f"Cache exists check failed: {e}")
-
-    def get_links_from_cache(self, page_title: str) -> list | None:
-        """Retrieves a list of links for a Wikipedia page from the cache."""
-        cache_key = f"wiki_links:{page_title}"
-        return self.get(cache_key)
-
-    def set_links_in_cache(
-        self, page_title: str, links: list, ttl: int | None = None
-    ) -> None:
-        """Stores a list of links for a page in the cache."""
-        cache_key = f"wiki_links:{page_title}"
-        self.set(cache_key, links, ttl)
 
     def delete_many(self, keys: list[str]) -> None:
         """Delete multiple keys in a single pipeline round-trip."""
         if not keys:
             return
         try:
-            with self.redis_client.pipeline() as pipe:
+            with self._redis_client.pipeline() as pipe:
                 for key in keys:
                     pipe.delete(key)
                 pipe.execute()
@@ -82,14 +70,14 @@ class RedisCache(CacheServiceInterface):
     def ping(self) -> bool:
         """Return True if Redis is reachable."""
         try:
-            return bool(self.redis_client.ping())
+            return bool(self._redis_client.ping())
         except redis.RedisError:
             return False
 
     def set_add(self, key: str, value: str) -> None:
         """Add a value to a Redis set."""
         try:
-            self.redis_client.sadd(key, value)
+            self._redis_client.sadd(key, value)
         except redis.RedisError as e:
             raise CacheConnectionError(f"set_add failed: {e}")
 
@@ -98,7 +86,7 @@ class RedisCache(CacheServiceInterface):
         if not values:
             return
         try:
-            with self.redis_client.pipeline() as pipe:
+            with self._redis_client.pipeline() as pipe:
                 for v in values:
                     pipe.sadd(key, v)
                 pipe.execute()
@@ -108,7 +96,7 @@ class RedisCache(CacheServiceInterface):
     def set_contains(self, key: str, value: str) -> bool:
         """Return True if value is a member of the set."""
         try:
-            return bool(self.redis_client.sismember(key, value))
+            return bool(self._redis_client.sismember(key, value))
         except redis.RedisError as e:
             raise CacheConnectionError(f"set_contains failed: {e}")
 
@@ -117,7 +105,7 @@ class RedisCache(CacheServiceInterface):
         if not values:
             return []
         try:
-            with self.redis_client.pipeline() as pipe:
+            with self._redis_client.pipeline() as pipe:
                 for v in values:
                     pipe.sismember(key, v)
                 return [bool(r) for r in pipe.execute()]
@@ -127,7 +115,7 @@ class RedisCache(CacheServiceInterface):
     def hash_set(self, key: str, field: str, value: str) -> None:
         """Set a field in a Redis hash."""
         try:
-            self.redis_client.hset(key, field, value)
+            self._redis_client.hset(key, field, value)
         except redis.RedisError as e:
             raise CacheConnectionError(f"hash_set failed: {e}")
 
@@ -136,7 +124,7 @@ class RedisCache(CacheServiceInterface):
         if not mapping:
             return
         try:
-            with self.redis_client.pipeline() as pipe:
+            with self._redis_client.pipeline() as pipe:
                 for field, value in mapping.items():
                     pipe.hset(key, field, value)
                 pipe.execute()
@@ -146,7 +134,7 @@ class RedisCache(CacheServiceInterface):
     def hash_get(self, key: str, field: str) -> str | None:
         """Get a field from a Redis hash. Returns None if missing."""
         try:
-            result = self.redis_client.hget(key, field)
+            result = self._redis_client.hget(key, field)
             if result is None:
                 return None
             return result.decode() if isinstance(result, bytes) else result  # type: ignore[union-attr]
@@ -156,39 +144,13 @@ class RedisCache(CacheServiceInterface):
     def clear_pattern(self, pattern: str) -> int:
         """Clear all keys matching a pattern."""
         try:
-            keys = self.redis_client.keys(pattern)
+            keys = self._redis_client.keys(pattern)
             if keys:
-                return self.redis_client.delete(*keys)  # type: ignore[return-value,arg-type]
+                return self._redis_client.delete(*keys)  # type: ignore[return-value,arg-type]
             return 0
         except redis.RedisError as e:
             logger.error(f"Failed to clear keys with pattern {pattern}: {e}")
             raise CacheConnectionError(f"Cache pattern clear failed: {e}")
-
-    def get_ttl(self, key: str) -> int:
-        """Get TTL for a key."""
-        try:
-            return self.redis_client.ttl(key)  # type: ignore[return-value]
-        except redis.RedisError as e:
-            logger.error(f"Failed to get TTL for key {key}: {e}")
-            return -1
-
-    def increment(self, key: str, amount: int = 1) -> int:
-        """Increment a numeric value in cache."""
-        try:
-            return self.redis_client.incrby(key, amount)  # type: ignore[return-value]
-        except redis.RedisError as e:
-            logger.error(f"Failed to increment key {key}: {e}")
-            raise CacheConnectionError(f"Cache increment failed: {e}")
-
-    def set_if_not_exists(self, key: str, value: Any, ttl: int | None = None) -> bool:
-        """Set value only if key doesn't exist."""
-        try:
-            ttl = ttl or self.default_ttl
-            serialized_value = json.dumps(value)
-            return bool(self.redis_client.set(key, serialized_value, ex=ttl, nx=True))
-        except (redis.RedisError, TypeError, ValueError) as e:
-            logger.error(f"Failed to set value if not exists for key {key}: {e}")
-            raise CacheConnectionError(f"Cache set if not exists failed: {e}")
 
 
 def get_redis_connection(redis_url: str) -> redis.Redis:

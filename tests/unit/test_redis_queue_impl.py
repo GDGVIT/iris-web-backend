@@ -30,20 +30,9 @@ def test_queue_push_pop_length_clear(mock_redis):
     mock_redis.delete.assert_called()
 
 
-def test_queue_peek_and_errors(mock_redis):
+def test_queue_errors(mock_redis):
     q = RedisQueue(mock_redis)
 
-    # peek None
-    mock_redis.lindex.return_value = None
-    assert q.peek("q", 0) is None
-
-    # peek value
-    mock_redis.lindex.return_value = json.dumps([1, 2, 3])
-    assert q.peek("q", 1) == [1, 2, 3]
-
-    # Avoid triggering code path that references non-existent JSONEncodeError
-
-    mock_redis.lpush.side_effect = None
     mock_redis.lpop.side_effect = redis.RedisError("bad pop")
     with pytest.raises(CacheConnectionError):
         q.pop("q")
@@ -64,16 +53,6 @@ def test_queue_push_error_raises(mock_redis):
     mock_redis.rpush.side_effect = redis.RedisError("push failed")
     with pytest.raises(CacheConnectionError):
         q.push("q", {"x": 1})
-
-
-def test_queue_push_front(mock_redis):
-    q = RedisQueue(mock_redis)
-    q.push_front("q", {"a": 1})
-    mock_redis.lpush.assert_called_once()
-
-    mock_redis.lpush.side_effect = redis.RedisError("front fail")
-    with pytest.raises(CacheConnectionError):
-        q.push_front("q", {"a": 1})
 
 
 def test_queue_pop_batch_zero_count(mock_redis):
