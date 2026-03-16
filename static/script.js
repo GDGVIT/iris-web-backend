@@ -842,6 +842,9 @@ class PathFinderUI {
         // Clear active task if any
         this.clearActiveTask();
 
+        // Ensure cancel button is hidden and find path button is shown
+        this.hideLoading();
+
         // Clear stored state
         StateManager.clear();
 
