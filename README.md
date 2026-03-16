@@ -16,7 +16,7 @@ It uses **bidirectional BFS** (default) which searches simultaneously from both 
 
 ## What It Does
 
-- Find Wikipedia paths via **bidirectional BFS** (default) or standard forward-only BFS — explores from both pages simultaneously to meet in the middle
+- Find Wikipedia paths via **bidirectional BFS** (default) or standard forward-only BFS
 - Async task processing — searches run in the background, results polled live
 - Real-time progress updates during search (aggregated from both search frontiers)
 - Interactive D3.js graph visualization of the path
