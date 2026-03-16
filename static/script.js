@@ -1,7 +1,8 @@
 // Use current domain for API calls (works for both localhost and deployed domains)
 const API_BASE = window.location.origin;
 let currentTaskId = null;
-let pollingInterval = null;
+let pollTimeoutId = null;
+let abortController = null;
 let graph = null;
 
 // State management
@@ -145,15 +146,21 @@ class PathFinderUI {
     }
 
     clearActiveTask() {
-        // Stop any ongoing polling
-        if (pollingInterval) {
-            clearInterval(pollingInterval);
-            pollingInterval = null;
+        // Cancel pending poll timeout
+        if (pollTimeoutId) {
+            clearTimeout(pollTimeoutId);
+            pollTimeoutId = null;
         }
-        
+
+        // Abort any in-flight fetch requests
+        if (abortController) {
+            abortController.abort();
+            abortController = null;
+        }
+
         // Clear current task ID
         currentTaskId = null;
-        
+
         // Update button state
         this.updateButtonState();
     }
@@ -313,9 +320,12 @@ class PathFinderUI {
             this.showLoading();
             this.hidePathDisplay();
             this.showVisualizationSection();
-            
+
             // Update search path header immediately with actual pages
             document.getElementById('searchPath').textContent = `${startPage} → ${endPage}`;
+
+            // Create a new AbortController for this request chain
+            abortController = new AbortController();
 
             const response = await fetch(`${API_BASE}/getPath`, {
                 method: 'POST',
@@ -326,12 +336,17 @@ class PathFinderUI {
                     start: startPage,
                     end: endPage,
                     algorithm: "bidirectional"
-                })
+                }),
+                signal: abortController.signal
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || `HTTP ${response.status}`);
+                let message = `HTTP ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    message = errorData.message || message;
+                } catch { /* non-JSON response */ }
+                throw new Error(message);
             }
 
             const data = await response.json();
@@ -343,6 +358,7 @@ class PathFinderUI {
             this.pollTaskStatus();
 
         } catch (error) {
+            if (error.name === 'AbortError') return;
             const section = document.getElementById('visualizationSection');
             section.classList.remove('show');
             this.showError(`Failed to start pathfinding: ${error.message}`);
@@ -353,7 +369,9 @@ class PathFinderUI {
         if (!currentTaskId) return;
 
         try {
-            const response = await fetch(`${API_BASE}/tasks/status/${currentTaskId}`);
+            const response = await fetch(`${API_BASE}/tasks/status/${currentTaskId}`, {
+                signal: abortController?.signal
+            });
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
@@ -368,7 +386,7 @@ class PathFinderUI {
                     // Show zeroed stats while we wait
                     this.resetProgressUI();
                     // Header already shows start→end; stats will populate on first update
-                    setTimeout(() => this.pollTaskStatus(), 1000);
+                    pollTimeoutId = setTimeout(() => this.pollTaskStatus(), 1000);
                     break;
 
                 case 'IN_PROGRESS':
@@ -377,7 +395,7 @@ class PathFinderUI {
                     if (data.progress) {
                         this.updateProgressDisplay(data.progress);
                     }
-                    setTimeout(() => this.pollTaskStatus(), 1000);
+                    pollTimeoutId = setTimeout(() => this.pollTaskStatus(), 1000);
                     break;
 
                 case 'SUCCESS':
@@ -410,6 +428,7 @@ class PathFinderUI {
             }
 
         } catch (error) {
+            if (error.name === 'AbortError') return;
             this.clearActiveTask();
             this.hideLoading();
             const section = document.getElementById('visualizationSection');
@@ -559,7 +578,7 @@ class PathFinderUI {
                 if (isTouch) return;
                 this.tooltip
                     .style('opacity', 1)
-                    .html(`${d.name}<br/>Step ${d.index + 1}`)
+                    .text(`${d.name} — Step ${d.index + 1}`)
                     .style('left', (event.pageX + 10) + 'px')
                     .style('top', (event.pageY - 10) + 'px');
             })
