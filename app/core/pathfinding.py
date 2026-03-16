@@ -281,14 +281,19 @@ class BidirProgressAggregator:
         self._bwd_q = bwd_q
         self._fwd_nodes = 0
         self._bwd_nodes = 0
+        self._fwd_depth = 0
+        self._bwd_depth = 0
+        self._start_time = time.time()
         self._lock = threading.Lock()
 
     def record(self, title: str, depth: int, direction: str) -> None:
         with self._lock:
             if direction == "forward":
                 self._fwd_nodes += 1
+                self._fwd_depth = max(self._fwd_depth, depth)
             else:
                 self._bwd_nodes += 1
+                self._bwd_depth = max(self._bwd_depth, depth)
             combined_queue = self._queue_service.length(
                 self._fwd_q
             ) + self._queue_service.length(self._bwd_q)
@@ -296,9 +301,12 @@ class BidirProgressAggregator:
                 {
                     "nodes_explored": self._fwd_nodes + self._bwd_nodes,
                     "queue_size": combined_queue,
-                    "current_depth": depth,
+                    "current_depth": self._fwd_depth + self._bwd_depth,
                     "last_node": title,
                     "direction": direction,
+                    "search_time_elapsed": round(
+                        time.time() - self._start_time, 2
+                    ),
                 }
             )
 

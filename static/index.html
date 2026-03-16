@@ -74,6 +74,7 @@
 
             <div class="button-group">
                 <button id="findPathBtn" class="btn btn-primary" onclick="findPath()">Find Path</button>
+                <button id="cancelBtn" class="btn btn-cancel hidden" onclick="cancelSearch()">Cancel Search</button>
                 <button id="clearBtn" class="btn btn-secondary" onclick="clearVisualization()">Clear</button>
             </div>
         </div>
@@ -106,6 +107,10 @@
                     <div class="depth-indicator">
                         <div class="depth-label">Depth:</div>
                         <div class="depth-dots" id="depthDots">
+                            <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
                             <div class="depth-dot"></div>
                             <div class="depth-dot"></div>
                             <div class="depth-dot"></div>

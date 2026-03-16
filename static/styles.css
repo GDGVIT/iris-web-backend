@@ -309,6 +309,20 @@ header p {
     box-shadow: none;
 }
 
+.btn-cancel {
+    background: transparent;
+    color: var(--danger-red);
+    border-color: var(--danger-red);
+}
+
+.btn-cancel:hover {
+    background: rgba(248, 81, 73, 0.1);
+    border-color: var(--danger-red);
+    color: var(--danger-red);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-small);
+}
+
 .btn-secondary {
     background: transparent;
     color: var(--text-primary);
@@ -732,7 +746,7 @@ header p {
     background: var(--bg-secondary);
     border: 1px solid var(--border-primary);
     border-radius: var(--radius-lg);
-    padding: 24px;
+    padding: 32px;
     box-shadow: var(--shadow-medium);
 }
 
@@ -952,12 +966,12 @@ header p {
     }
 
     .input-section,
-    .path-steps-container {
-        padding: 20px;
+    .path-steps-container,
+    .graph-container {
+        padding: 16px;
     }
 
     .graph-container {
-        padding: 16px;
         min-height: 400px;
     }
 }
