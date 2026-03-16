@@ -221,7 +221,7 @@ def mock_queue_service():
 def mock_celery_task():
     """Mock Celery task for testing."""
     mock_task = Mock()
-    mock_task.id = "test-task-id-123"
+    mock_task.id = "550e8400-e29b-41d4-a716-446655440000"
     mock_task.state = "PENDING"
     mock_task.result = None
     mock_task.info = None

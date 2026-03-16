@@ -41,7 +41,7 @@ class SearchRequest:
     start_page: str
     end_page: str
     max_depth: int | None = None
-    algorithm: str | None = "bfs"
+    algorithm: str | None = "bidirectional"
 
     def validate(self) -> bool:
         """Validate the search request."""

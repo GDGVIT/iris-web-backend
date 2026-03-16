@@ -1,4 +1,5 @@
 import os
+import uuid
 
 from flask import Blueprint, jsonify, redirect, request, send_from_directory, url_for
 
@@ -13,6 +14,14 @@ from app.core.factory import (
     get_cache_management_service,
 )
 from app.infrastructure.tasks import find_path_task
+from app.utils.constants import (
+    ALLOWED_CACHE_PREFIXES,
+    CELERY_STATE_FAILURE,
+    CELERY_STATE_PROGRESS,
+    CELERY_STATE_REVOKED,
+    CELERY_STATE_SUCCESS,
+    HEALTH_CHECK_CACHE_KEY,
+)
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -140,6 +149,11 @@ def get_task_status_route(task_id):
             progress:
               type: object
     """
+    try:
+        uuid.UUID(task_id)
+    except ValueError:
+        return jsonify({"error": "Invalid task ID format"}), 404
+
     task = find_path_task.AsyncResult(task_id)  # type: ignore[attr-defined]
 
     if task.state == "PENDING":
@@ -148,13 +162,13 @@ def get_task_status_route(task_id):
             "task_id": task_id,
             "message": "Task is waiting to be processed",
         }
-    elif task.state == "PROGRESS":
+    elif task.state == CELERY_STATE_PROGRESS:
         response_data = {
             "status": "IN_PROGRESS",
             "task_id": task_id,
             "progress": task.info,
         }
-    elif task.state == "SUCCESS":
+    elif task.state == CELERY_STATE_SUCCESS:
         result = task.result
         if isinstance(result, dict) and result.get("status") == "SUCCESS":
             response_data = {
@@ -170,11 +184,16 @@ def get_task_status_route(task_id):
             }
         else:
             response_data = {"status": "SUCCESS", "task_id": task_id, "result": result}
-    elif task.state == "FAILURE":
+    elif task.state == CELERY_STATE_FAILURE:
         response_data = {
             "status": "FAILURE",
             "task_id": task_id,
             "error": str(task.info),
+        }
+    elif task.state == CELERY_STATE_REVOKED:
+        response_data = {
+            "status": CELERY_STATE_REVOKED,
+            "task_id": task_id,
         }
     else:
         response_data = {
@@ -209,8 +228,8 @@ def health_check():
 
         cache_status = "healthy"
         try:
-            cache_service.set("health_check", "ok", ttl=60)
-            cache_value = cache_service.get("health_check")
+            cache_service.set(HEALTH_CHECK_CACHE_KEY, "ok", ttl=60)
+            cache_value = cache_service.get(HEALTH_CHECK_CACHE_KEY)
             if cache_value != "ok":
                 cache_status = "unhealthy: cache test failed"
         except Exception as e:
@@ -263,13 +282,29 @@ def clear_cache():
             pattern:
               type: string
               default: "wiki_links:*"
-              description: Redis key pattern to clear
+              description: |
+                Redis key pattern to clear. Must start with one of the valid prefixes:
+                - `bfs_*` — BFS session state (all transient search keys: bfs_queue:*, bfs_visited:*, bfs_parent:*, bfs_fwd_*:*, bfs_bwd_*:*)
+                - `wiki_links:*` — forward links cache (Wikipedia outbound links per page)
+                - `wiki_backlinks:*` — backlinks cache (Wikipedia inbound links per page)
+                - `path:*` — cached pathfinding results (keyed by start:end page pair)
+                - `page_info:*` — cached Wikipedia page metadata (existence, redirects)
     responses:
       200:
         description: Cache cleared successfully
+      400:
+        description: Pattern prefix not allowed
     """
     data = request.get_json()
     pattern = data.get("pattern", "wiki_links:*")
+
+    if not any(pattern.startswith(p) for p in ALLOWED_CACHE_PREFIXES):
+        return jsonify(
+            {
+                "success": False,
+                "error": f"Pattern must start with one of: {', '.join(ALLOWED_CACHE_PREFIXES)}",
+            }
+        ), 400
 
     try:
         cache_service = get_cache_management_service()
@@ -376,18 +411,23 @@ def cancel_task(task_id):
       404:
         description: Task not found or already completed
     """
+    try:
+        uuid.UUID(task_id)
+    except ValueError:
+        return jsonify({"error": "Invalid task ID format"}), 404
+
     terminate = request.args.get("terminate", "true").lower() != "false"
 
     # Check current state before revoking
     task = find_path_task.AsyncResult(task_id)  # type: ignore[attr-defined]
-    if task.state in ("SUCCESS", "FAILURE"):
+    if task.state in (CELERY_STATE_SUCCESS, CELERY_STATE_FAILURE):
         return jsonify(
             {
                 "revoked": False,
                 "task_id": task_id,
                 "reason": f"Task already in terminal state: {task.state}",
             }
-        ), 404
+        ), 409
 
     celery.control.revoke(task_id, terminate=terminate, signal="SIGTERM")
     logger.info(f"Revoked task {task_id} (terminate={terminate})")

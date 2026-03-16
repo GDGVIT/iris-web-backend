@@ -1,3 +1,10 @@
+from app.utils.constants import (
+    ERROR_DISAMBIGUATION_PAGE,
+    ERROR_INVALID_PAGE,
+    ERROR_PATH_NOT_FOUND,
+)
+
+
 class IrisBaseException(Exception):
     """Base exception for all Iris application exceptions."""
 
@@ -64,7 +71,7 @@ class PathNotFoundError(PathFindingError):
             message += f" within {max_depth} steps"
         super().__init__(message, start_page, end_page)
         self.max_depth = max_depth
-        self.code = "PATH_NOT_FOUND"
+        self.code = ERROR_PATH_NOT_FOUND
 
 
 class InvalidPageError(PathFindingError):
@@ -78,7 +85,7 @@ class InvalidPageError(PathFindingError):
             else:
                 message = "Invalid page provided"
         super().__init__(message)
-        self.code = "INVALID_PAGE"
+        self.code = ERROR_INVALID_PAGE
 
 
 class DisambiguationPageError(PathFindingError):
@@ -94,7 +101,7 @@ class DisambiguationPageError(PathFindingError):
             message = f"'{page_title}' is a disambiguation page. Please specify a more specific page."
 
         super().__init__(message, page_title, resolved_title)
-        self.code = "DISAMBIGUATION_PAGE"
+        self.code = ERROR_DISAMBIGUATION_PAGE
 
 
 class CacheError(IrisBaseException):

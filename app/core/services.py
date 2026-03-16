@@ -12,6 +12,7 @@ from app.core.models import (
     SearchRequest,
     WikipediaPage,
 )
+from app.utils.constants import CACHE_PREFIX_PAGE_INFO, CACHE_PREFIX_PATH
 from app.utils.exceptions import (
     DisambiguationPageError,
     InvalidPageError,
@@ -52,7 +53,7 @@ class PathFindingService:
             raise InvalidPageError("Invalid search request")
 
         # Check cache first
-        cache_key = f"path:{request.start_page}:{request.end_page}"
+        cache_key = f"{CACHE_PREFIX_PATH}:{request.start_page}:{request.end_page}"
         cached_result = self.cache_service.get(cache_key)
         if cached_result:
             logger.info(
@@ -83,7 +84,14 @@ class PathFindingService:
             # Cache the result
             self.cache_service.set(
                 cache_key,
-                result.__dict__,
+                {
+                    "path": result.path,
+                    "length": result.length,
+                    "start_page": result.start_page,
+                    "end_page": result.end_page,
+                    "search_time": result.search_time,
+                    "nodes_explored": result.nodes_explored,
+                },
                 ttl=current_app.config.get("CACHE_PATH_TTL", 3600),
             )
 
@@ -174,7 +182,7 @@ class WikipediaService:
             raise InvalidPageError("Page title cannot be empty")
 
         # Check cache first
-        cache_key = f"page_info:{page_title}"
+        cache_key = f"{CACHE_PREFIX_PAGE_INFO}:{page_title}"
         cached_info = self.cache_service.get(cache_key)
         if cached_info:
             return WikipediaPage(**cached_info)
@@ -193,7 +201,12 @@ class WikipediaService:
         # Cache the result
         self.cache_service.set(
             cache_key,
-            page.__dict__,
+            {
+                "title": page.title,
+                "page_id": page.page_id,
+                "last_modified": page.last_modified,
+                "links": page.links,
+            },
             ttl=current_app.config.get("CACHE_PAGE_TTL", 7200),
         )
 

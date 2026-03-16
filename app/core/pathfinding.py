@@ -10,6 +10,17 @@ from app.core.interfaces import (
     QueueInterface,
     WikipediaClientInterface,
 )
+from app.utils.constants import (
+    BFS_BWD_PARENT_PREFIX,
+    BFS_BWD_QUEUE_PREFIX,
+    BFS_BWD_VISITED_PREFIX,
+    BFS_FWD_PARENT_PREFIX,
+    BFS_FWD_QUEUE_PREFIX,
+    BFS_FWD_VISITED_PREFIX,
+    BFS_PARENT_PREFIX,
+    BFS_QUEUE_PREFIX,
+    BFS_VISITED_PREFIX,
+)
 from app.utils.exceptions import (
     CacheConnectionError,
     InvalidPageError,
@@ -33,7 +44,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         cache_service: CacheServiceInterface,
         queue_service: QueueInterface,
         max_depth: int = 6,
-        batch_size: int = 50,
+        batch_size: int = 20,
         progress_callback: Callable | None = None,
     ):
         self.wikipedia_client = wikipedia_client
@@ -67,9 +78,9 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
 
         # Generate unique session ID for this search
         session_id = str(uuid.uuid4())
-        queue_key = f"bfs_queue:{session_id}"
-        visited_key = f"bfs_visited:{session_id}"
-        parent_key = f"bfs_parent:{session_id}"
+        queue_key = f"{BFS_QUEUE_PREFIX}:{session_id}"
+        visited_key = f"{BFS_VISITED_PREFIX}:{session_id}"
+        parent_key = f"{BFS_PARENT_PREFIX}:{session_id}"
 
         try:
             return self._perform_bfs_search(
@@ -127,9 +138,8 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             # nodes_lock guards nodes_explored against concurrent increments.
             #
             # _depth captures current_depth by value (avoids ruff B023: loop
-            # variable capture).  if/else lets basedpyright infer the correct
-            # Callable | None union without a redundant pre-declaration.
-            # Pre-declare so basedpyright knows the union type across both branches.
+            # variable capture).  Pre-declare so basedpyright knows the union
+            # type across both branches of the if/else below.
             on_page_fetched: Callable[[str, list[str]], None] | None = None
             if self.progress_callback:
 
@@ -304,9 +314,7 @@ class BidirProgressAggregator:
                     "current_depth": self._fwd_depth + self._bwd_depth,
                     "last_node": title,
                     "direction": direction,
-                    "search_time_elapsed": round(
-                        time.time() - self._start_time, 2
-                    ),
+                    "search_time_elapsed": round(time.time() - self._start_time, 2),
                 }
             )
 
@@ -329,7 +337,7 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         cache_service: CacheServiceInterface,
         queue_service: QueueInterface,
         max_depth: int = 6,
-        batch_size: int = 50,
+        batch_size: int = 20,
         progress_callback: Callable | None = None,
     ):
         self.wikipedia_client = wikipedia_client
@@ -358,12 +366,12 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
 
         sid = str(uuid.uuid4())[:8]
 
-        fwd_q = f"bfs_fwd_queue:{sid}"
-        bwd_q = f"bfs_bwd_queue:{sid}"
-        fwd_vis = f"bfs_fwd_visited:{sid}"
-        bwd_vis = f"bfs_bwd_visited:{sid}"
-        fwd_par = f"bfs_fwd_parent:{sid}"
-        bwd_par = f"bfs_bwd_parent:{sid}"
+        fwd_q = f"{BFS_FWD_QUEUE_PREFIX}:{sid}"
+        bwd_q = f"{BFS_BWD_QUEUE_PREFIX}:{sid}"
+        fwd_vis = f"{BFS_FWD_VISITED_PREFIX}:{sid}"
+        bwd_vis = f"{BFS_BWD_VISITED_PREFIX}:{sid}"
+        fwd_par = f"{BFS_FWD_PARENT_PREFIX}:{sid}"
+        bwd_par = f"{BFS_BWD_PARENT_PREFIX}:{sid}"
 
         keys = [fwd_q, bwd_q, fwd_vis, bwd_vis, fwd_par, bwd_par]
 

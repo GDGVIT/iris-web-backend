@@ -5,6 +5,7 @@ from flasgger import Swagger
 from flask import Flask
 
 from app.api.swagger import SWAGGER_CONFIG, SWAGGER_TEMPLATE
+from app.utils.constants import ERROR_INTERNAL_ERROR
 from app.utils.logging import configure_logging
 
 # Initialize Celery
@@ -139,7 +140,7 @@ def register_error_handlers(app):
         response = {
             "error": True,
             "message": "Internal server error",
-            "code": "INTERNAL_ERROR",
+            "code": ERROR_INTERNAL_ERROR,
         }
         return jsonify(response), 500
 

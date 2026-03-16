@@ -4,6 +4,30 @@ from celery.schedules import crontab
 from app import celery
 from app.core.factory import get_pathfinding_service
 from app.core.models import SearchRequest
+from app.utils.constants import (
+    ALGORITHM_BIDIRECTIONAL,
+    BFS_CACHE_CLEANUP_PATTERN,
+    CELERY_STATE_FAILURE,
+    CELERY_STATE_PROGRESS,
+    CELERY_STATE_RETRY,
+    CELERY_STATE_SUCCESS,
+    ERROR_DISAMBIGUATION_PAGE,
+    HEALTH_CHECK_CACHE_KEY,
+    TASK_FQN_CACHE_CLEANUP,
+    TASK_FQN_FIND_PATH,
+    TASK_FQN_HEALTH_CHECK,
+    ERROR_INTERNAL_ERROR,
+    ERROR_INVALID_PAGE,
+    ERROR_INVALID_REQUEST,
+    ERROR_MAX_RETRIES_EXCEEDED,
+    ERROR_PAGE_NOT_FOUND,
+    ERROR_PATH_NOT_FOUND,
+    PERIODIC_TASK_CLEANUP_BFS,
+    PERIODIC_TASK_HEALTH_CHECK,
+    QUEUE_HEALTH,
+    QUEUE_MAINTENANCE,
+    QUEUE_PATHFINDING,
+)
 from app.utils.exceptions import (
     CacheConnectionError,
     DisambiguationPageError,
@@ -22,7 +46,7 @@ logger = get_logger(__name__)
     retry_kwargs={"max_retries": 3, "countdown": 60},
 )
 def find_path_task(
-    self, start_page: str, end_page: str, algorithm: str = "bidirectional"
+    self, start_page: str, end_page: str, algorithm: str = ALGORITHM_BIDIRECTIONAL
 ):
     """
     Celery task for finding a path between Wikipedia pages.
@@ -43,7 +67,7 @@ def find_path_task(
     try:
         # Update task state to IN_PROGRESS
         self.update_state(
-            state="PROGRESS",
+            state=CELERY_STATE_PROGRESS,
             meta={
                 "current": 0,
                 "total": 100,
@@ -62,14 +86,14 @@ def find_path_task(
         if not search_request.validate():
             logger.error(f"Task {task_id}: Invalid search request")
             return {
-                "status": "FAILURE",
+                "status": CELERY_STATE_FAILURE,
                 "error": "Invalid search request: start and end pages must be different and non-empty",
-                "code": "INVALID_REQUEST",
+                "code": ERROR_INVALID_REQUEST,
             }
 
         # Update progress
         self.update_state(
-            state="PROGRESS",
+            state=CELERY_STATE_PROGRESS,
             meta={
                 "current": 10,
                 "total": 100,
@@ -98,7 +122,7 @@ def find_path_task(
             progress_data["search_stats"].setdefault("end_page", end_page)
             progress_data["search_stats"].setdefault("max_depth", max_depth)
 
-            self.update_state(state="PROGRESS", meta=progress_data)
+            self.update_state(state=CELERY_STATE_PROGRESS, meta=progress_data)
 
         # Get pathfinding service with progress callback
         pathfinding_service = get_pathfinding_service(algorithm, progress_update)
@@ -111,9 +135,9 @@ def find_path_task(
         except DisambiguationPageError as e:
             logger.error(f"Task {task_id}: Disambiguation page error - {e}")
             return {
-                "status": "FAILURE",
+                "status": CELERY_STATE_FAILURE,
                 "error": str(e),
-                "code": "DISAMBIGUATION_PAGE",
+                "code": ERROR_DISAMBIGUATION_PAGE,
                 "start_page": start_page,
                 "end_page": end_page,
             }
@@ -121,22 +145,22 @@ def find_path_task(
         if not start_exists:
             logger.error(f"Task {task_id}: Start page '{start_page}' does not exist")
             return {
-                "status": "FAILURE",
+                "status": CELERY_STATE_FAILURE,
                 "error": f"Start page '{start_page}' does not exist on Wikipedia",
-                "code": "PAGE_NOT_FOUND",
+                "code": ERROR_PAGE_NOT_FOUND,
             }
 
         if not end_exists:
             logger.error(f"Task {task_id}: End page '{end_page}' does not exist")
             return {
-                "status": "FAILURE",
+                "status": CELERY_STATE_FAILURE,
                 "error": f"End page '{end_page}' does not exist on Wikipedia",
-                "code": "PAGE_NOT_FOUND",
+                "code": ERROR_PAGE_NOT_FOUND,
             }
 
         # Update progress - starting search
         self.update_state(
-            state="PROGRESS",
+            state=CELERY_STATE_PROGRESS,
             meta={
                 "status": "Starting pathfinding search...",
                 "search_stats": {
@@ -157,7 +181,7 @@ def find_path_task(
 
         # Return successful result with detailed search stats
         success_result = {
-            "status": "SUCCESS",
+            "status": CELERY_STATE_SUCCESS,
             "path": result.path,
             "length": result.length,
             "start_page": result.start_page,
@@ -183,9 +207,9 @@ def find_path_task(
     except PathNotFoundError as e:
         logger.warning(f"Task {task_id}: No path found - {e}")
         return {
-            "status": "FAILURE",
+            "status": CELERY_STATE_FAILURE,
             "error": str(e),
-            "code": "PATH_NOT_FOUND",
+            "code": ERROR_PATH_NOT_FOUND,
             "start_page": start_page,
             "end_page": end_page,
         }
@@ -193,9 +217,9 @@ def find_path_task(
     except InvalidPageError as e:
         logger.error(f"Task {task_id}: Invalid page - {e}")
         return {
-            "status": "FAILURE",
+            "status": CELERY_STATE_FAILURE,
             "error": str(e),
-            "code": "INVALID_PAGE",
+            "code": ERROR_INVALID_PAGE,
             "start_page": start_page,
             "end_page": end_page,
         }
@@ -203,9 +227,9 @@ def find_path_task(
     except DisambiguationPageError as e:
         logger.error(f"Task {task_id}: Disambiguation page error - {e}")
         return {
-            "status": "FAILURE",
+            "status": CELERY_STATE_FAILURE,
             "error": str(e),
-            "code": "DISAMBIGUATION_PAGE",
+            "code": ERROR_DISAMBIGUATION_PAGE,
             "start_page": start_page,
             "end_page": end_page,
         }
@@ -220,7 +244,7 @@ def find_path_task(
 
         if retry_count < max_retries:
             self.update_state(
-                state="RETRY",
+                state=CELERY_STATE_RETRY,
                 meta={
                     "error": str(e),
                     "retry_count": retry_count + 1,
@@ -235,9 +259,9 @@ def find_path_task(
         else:
             logger.error(f"Task {task_id}: Max retries exceeded - {e}")
             return {
-                "status": "FAILURE",
+                "status": CELERY_STATE_FAILURE,
                 "error": f"Max retries exceeded. Last error: {str(e)}",
-                "code": "MAX_RETRIES_EXCEEDED",
+                "code": ERROR_MAX_RETRIES_EXCEEDED,
                 "retry_count": retry_count,
             }
 
@@ -245,9 +269,9 @@ def find_path_task(
         # Unexpected errors - don't retry
         logger.error(f"Task {task_id}: Unexpected error - {e}", exc_info=True)
         return {
-            "status": "FAILURE",
+            "status": CELERY_STATE_FAILURE,
             "error": f"Unexpected error: {str(e)}",
-            "code": "INTERNAL_ERROR",
+            "code": ERROR_INTERNAL_ERROR,
         }
 
 
@@ -270,7 +294,7 @@ def health_check_task(self):
         cache_service = ServiceFactory.get_cache_service()
         if not cache_service.ping():
             raise Exception("Redis ping failed")
-        test_key = f"health_check_{task_id}"
+        test_key = f"{HEALTH_CHECK_CACHE_KEY}_{task_id}"
         cache_service.set(test_key, "ok", ttl=60)
         cache_value = cache_service.get(test_key)
         cache_service.delete(test_key)
@@ -280,7 +304,7 @@ def health_check_task(self):
 
         logger.info(f"Health check task {task_id} completed successfully")
         return {
-            "status": "SUCCESS",
+            "status": CELERY_STATE_SUCCESS,
             "message": "Celery worker is healthy",
             "task_id": task_id,
             "checks": {"redis": "healthy", "cache": "healthy"},
@@ -288,11 +312,11 @@ def health_check_task(self):
 
     except Exception as e:
         logger.error(f"Health check task {task_id} failed: {e}")
-        return {"status": "FAILURE", "error": str(e), "task_id": task_id}
+        return {"status": CELERY_STATE_FAILURE, "error": str(e), "task_id": task_id}
 
 
 @celery.task(bind=True)
-def cache_cleanup_task(self, pattern: str = "bfs_*"):
+def cache_cleanup_task(self, pattern: str = BFS_CACHE_CLEANUP_PATTERN):
     """
     Celery task for cleaning up expired cache entries.
 
@@ -315,7 +339,7 @@ def cache_cleanup_task(self, pattern: str = "bfs_*"):
             f"Cache cleanup task {task_id} completed: cleared {cleared_count} entries"
         )
         return {
-            "status": "SUCCESS",
+            "status": CELERY_STATE_SUCCESS,
             "message": f"Cleared {cleared_count} cache entries",
             "pattern": pattern,
             "cleared_count": cleared_count,
@@ -325,7 +349,7 @@ def cache_cleanup_task(self, pattern: str = "bfs_*"):
     except Exception as e:
         logger.error(f"Cache cleanup task {task_id} failed: {e}")
         return {
-            "status": "FAILURE",
+            "status": CELERY_STATE_FAILURE,
             "error": str(e),
             "pattern": pattern,
             "task_id": task_id,
@@ -338,9 +362,9 @@ def configure_task_routes(app):
 
     # Task routes - can be used to route tasks to specific workers
     app.conf.task_routes = {
-        "app.infrastructure.tasks.find_path_task": {"queue": "pathfinding"},
-        "app.infrastructure.tasks.health_check_task": {"queue": "health"},
-        "app.infrastructure.tasks.cache_cleanup_task": {"queue": "maintenance"},
+        TASK_FQN_FIND_PATH: {"queue": QUEUE_PATHFINDING},
+        TASK_FQN_HEALTH_CHECK: {"queue": QUEUE_HEALTH},
+        TASK_FQN_CACHE_CLEANUP: {"queue": QUEUE_MAINTENANCE},
     }
 
     # Task result settings
@@ -356,14 +380,14 @@ def configure_task_routes(app):
 # Periodic tasks (if using celery beat)
 app_periodic_tasks = {
     # Clean up old BFS search state every hour
-    "cleanup-bfs-cache": {
-        "task": "app.infrastructure.tasks.cache_cleanup_task",
+    PERIODIC_TASK_CLEANUP_BFS: {
+        "task": TASK_FQN_CACHE_CLEANUP,
         "schedule": crontab(minute=0),  # Every hour
-        "args": ("bfs_*",),
+        "args": (BFS_CACHE_CLEANUP_PATTERN,),
     },
     # Health check every 5 minutes
-    "health-check": {
-        "task": "app.infrastructure.tasks.health_check_task",
+    PERIODIC_TASK_HEALTH_CHECK: {
+        "task": TASK_FQN_HEALTH_CHECK,
         "schedule": crontab(minute="*/5"),  # Every 5 minutes
     },
 }

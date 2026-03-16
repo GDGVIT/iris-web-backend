@@ -52,7 +52,7 @@ class TestPathfindingAPI:
 
     def test_get_task_status_pending(self, client, mock_celery_task):
         """Test task status check for pending task."""
-        task_id = "test-task-id-123"
+        task_id = "550e8400-e29b-41d4-a716-446655440000"
 
         response = client.get(f"/tasks/status/{task_id}")
 
@@ -63,7 +63,7 @@ class TestPathfindingAPI:
 
     def test_get_task_status_success(self, client, mock_celery_task, sample_path_data):
         """Test task status check for successful task."""
-        task_id = "test-task-id-123"
+        task_id = "550e8400-e29b-41d4-a716-446655440000"
 
         # Mock successful task result
         mock_async_result = mock_celery_task.mock_async_result
@@ -86,7 +86,7 @@ class TestPathfindingAPI:
 
     def test_get_task_status_failure(self, client, mock_celery_task):
         """Test task status check for failed task."""
-        task_id = "test-task-id-123"
+        task_id = "550e8400-e29b-41d4-a716-446655440000"
 
         # Mock failed task result
         mock_async_result = mock_celery_task.mock_async_result
@@ -103,7 +103,7 @@ class TestPathfindingAPI:
 
     def test_get_task_status_in_progress(self, client, mock_celery_task):
         """PROGRESS state maps to status IN_PROGRESS with progress payload."""
-        task_id = "test-task-id-123"
+        task_id = "550e8400-e29b-41d4-a716-446655440000"
 
         mock_async_result = mock_celery_task.mock_async_result
         mock_async_result.state = "PROGRESS"
@@ -128,7 +128,7 @@ class TestPathfindingAPI:
 
     def test_get_task_status_retry(self, client, mock_celery_task):
         """RETRY (and other non-standard states) are returned as-is from the else branch."""
-        task_id = "test-task-id-123"
+        task_id = "550e8400-e29b-41d4-a716-446655440000"
 
         mock_async_result = mock_celery_task.mock_async_result
         mock_async_result.state = "RETRY"
@@ -285,7 +285,7 @@ class TestAPIMiddleware:
         """Test CORS headers are added to responses."""
         with patch("app.infrastructure.tasks.find_path_task.delay") as mock_delay:
             mock_task = Mock()
-            mock_task.id = "test-task-id"
+            mock_task.id = "550e8400-e29b-41d4-a716-446655440000"
             mock_delay.return_value = mock_task
 
             response = client.post(

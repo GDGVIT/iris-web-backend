@@ -7,6 +7,12 @@ from functools import partial
 import requests
 
 from app.core.interfaces import CacheServiceInterface, WikipediaClientInterface
+from app.utils.constants import (
+    CACHE_PREFIX_WIKI_BACKLINKS,
+    CACHE_PREFIX_WIKI_LINKS,
+    WIKIPEDIA_API_URL,
+    WIKIPEDIA_USER_AGENT,
+)
 from app.utils.exceptions import WikipediaAPIError
 from app.utils.logging import get_logger
 
@@ -20,7 +26,7 @@ class WikipediaClient(WikipediaClientInterface):
         self,
         cache_service: CacheServiceInterface | None = None,
         session: requests.Session | None = None,
-        max_workers: int = 10,
+        max_workers: int = 3,
         cache_ttl: int = 86400,  # 24 hours
         api_timeout: int = 15,
         max_paginate_calls: int = 3,
@@ -35,7 +41,7 @@ class WikipediaClient(WikipediaClientInterface):
         self.max_paginate_calls = max_paginate_calls
         self.request_delay = request_delay
         self.max_retries = max_retries
-        self.base_url = "https://en.wikipedia.org/w/api.php"
+        self.base_url = WIKIPEDIA_API_URL
 
         # Shared rate limiter — enforces minimum interval between all requests
         # across every thread that shares this client instance.
@@ -43,11 +49,7 @@ class WikipediaClient(WikipediaClientInterface):
         self._last_request_time: float = 0.0
 
         # Configure session
-        self.session.headers.update(
-            {
-                "User-Agent": "Iris-Wikipedia-Pathfinder/1.0 (https://github.com/mdhishaamakhtar/iris-web-backend)"
-            }
-        )
+        self.session.headers.update({"User-Agent": WIKIPEDIA_USER_AGENT})
 
     def _acquire_rate_slot(self) -> None:
         """Block until the global rate limit allows the next request.
@@ -224,7 +226,10 @@ class WikipediaClient(WikipediaClientInterface):
             WikipediaAPIError: When API requests fail
         """
         return self._bulk_fetch(
-            page_titles, "wiki_links", self._fetch_single_page, on_page_fetched
+            page_titles,
+            CACHE_PREFIX_WIKI_LINKS,
+            self._fetch_single_page,
+            on_page_fetched,
         )
 
     def get_backlinks_bulk(
@@ -246,7 +251,7 @@ class WikipediaClient(WikipediaClientInterface):
         """
         return self._bulk_fetch(
             page_titles,
-            "wiki_backlinks",
+            CACHE_PREFIX_WIKI_BACKLINKS,
             self._fetch_backlinks_single_page,
             on_page_fetched,
         )
@@ -373,7 +378,7 @@ class WikipediaClient(WikipediaClientInterface):
         Returns:
             True if page exists, False otherwise
         """
-        params = {
+        params: dict[str, str | int] = {
             "action": "query",
             "format": "json",
             "titles": page_title,
@@ -381,18 +386,14 @@ class WikipediaClient(WikipediaClientInterface):
         }
 
         try:
-            response = self.session.get(
-                self.base_url, params=params, timeout=self.api_timeout
-            )
-            response.raise_for_status()
-            data = response.json().get("query", {})
+            data = self._request_with_backoff(params).json().get("query", {})
 
             pages = data.get("pages", {})
             for page_data in pages.values():
                 return "missing" not in page_data
 
             return False
-        except requests.RequestException as e:
+        except WikipediaAPIError as e:
             logger.error(f"Failed to check page existence for {page_title}: {e}")
             return False
 

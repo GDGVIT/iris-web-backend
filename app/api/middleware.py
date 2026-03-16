@@ -6,6 +6,11 @@ from typing import Any
 from flask import jsonify, request
 from marshmallow import ValidationError
 
+from app.utils.constants import (
+    ERROR_INTERNAL_ERROR,
+    ERROR_INVALID_PAGE,
+    ERROR_PATH_NOT_FOUND,
+)
 from app.utils.exceptions import (
     CacheConnectionError,
     InvalidPageError,
@@ -49,11 +54,15 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
             error_response = {
                 "error": True,
                 "message": str(e),
-                "code": "PATH_NOT_FOUND",
+                "code": ERROR_PATH_NOT_FOUND,
             }
             return jsonify(error_response), 404
         except InvalidPageError as e:
-            error_response = {"error": True, "message": str(e), "code": "INVALID_PAGE"}
+            error_response = {
+                "error": True,
+                "message": str(e),
+                "code": ERROR_INVALID_PAGE,
+            }
             return jsonify(error_response), 400
         except WikipediaPageNotFoundError as e:
             error_response = {
@@ -84,7 +93,7 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
             error_response = {
                 "error": True,
                 "message": "Internal server error",
-                "code": "INTERNAL_ERROR",
+                "code": ERROR_INTERNAL_ERROR,
             }
             logger.error(f"Unexpected error: {e}", exc_info=True)
             return jsonify(error_response), 500

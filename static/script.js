@@ -3,6 +3,7 @@ const API_BASE = window.location.origin;
 let currentTaskId = null;
 let pollTimeoutId = null;
 let abortController = null;
+let taskStartTime = null;
 let graph = null;
 
 // State management
@@ -158,8 +159,9 @@ class PathFinderUI {
             abortController = null;
         }
 
-        // Clear current task ID
+        // Clear current task ID and start time
         currentTaskId = null;
+        taskStartTime = null;
 
         // Update button state
         this.updateButtonState();
@@ -356,6 +358,7 @@ class PathFinderUI {
 
             const data = await response.json();
             currentTaskId = data.task_id;
+            taskStartTime = Date.now();
 
             // Save task ID to state for recovery
             this.saveCurrentState();
@@ -378,8 +381,18 @@ class PathFinderUI {
         const taskId = currentTaskId;
         if (!taskId) return;
 
+        // Match server hard limit (CELERY_TASK_TIME_LIMIT = 600s)
+        const MAX_TASK_POLL_MS = 600_000;
+        if (taskStartTime && Date.now() - taskStartTime > MAX_TASK_POLL_MS) {
+            this.clearActiveTask();
+            this.hideLoading();
+            document.getElementById('visualizationSection').classList.remove('show');
+            this.showError('Search timed out. Please try again.');
+            StateManager.clear();
+            return;
+        }
+
         const MAX_POLL_ERRORS = 5;
-        const POLL_TIMEOUT_MS = 10000;
 
         try {
             const response = await fetch(`${API_BASE}/tasks/status/${currentTaskId}`, {
