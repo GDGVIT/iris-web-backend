@@ -340,7 +340,6 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "redis" },
     { name = "requests" },
-    { name = "wikipedia-api" },
 ]
 
 [package.dev-dependencies]
@@ -363,7 +362,6 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "redis", specifier = ">=6.2.0" },
     { name = "requests", specifier = ">=2.32.4" },
-    { name = "wikipedia-api", specifier = ">=0.8.1" },
 ]
 
 [package.metadata.requires-dev]
@@ -870,17 +868,4 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/61/f1/ee81806690a87dab5f5653c1f146c92bc066d7f4cebc603ef88eb9e13957/werkzeug-3.1.6.tar.gz", hash = "sha256:210c6bede5a420a913956b4791a7f4d6843a43b6fcee4dfa08a65e93007d0d25", size = 864736, upload-time = "2026-02-19T15:17:18.884Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4d/ec/d58832f89ede95652fd01f4f24236af7d32b70cab2196dfcc2d2fd13c5c2/werkzeug-3.1.6-py3-none-any.whl", hash = "sha256:7ddf3357bb9564e407607f988f683d72038551200c704012bb9a4c523d42f131", size = 225166, upload-time = "2026-02-19T15:17:17.475Z" },
-]
-
-[[package]]
-name = "wikipedia-api"
-version = "0.10.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "click" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/cb/59/a6f5790043cff046658d44bc5b594a7d0cc0d9a1a6911a0df6e7aba2179c/wikipedia_api-0.10.2.tar.gz", hash = "sha256:93fc84d2d88b043c626a03bc013a741c206ab60c0517bfce51fa60a0edc5087d", size = 29841, upload-time = "2026-03-06T22:01:16.615Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/34/41/cf1ceb3071b58175d6960d5f45bfd5c007fc8ab5bec8ca189efd02bb05e4/wikipedia_api-0.10.2-py3-none-any.whl", hash = "sha256:0aa6d09e46909d396d81af97de5dee06004c1f823725b4f66c352b1096d48163", size = 22690, upload-time = "2026-03-06T22:01:15.024Z" },
 ]
