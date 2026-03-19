@@ -38,8 +38,7 @@ It uses **bidirectional BFS** (default) which searches simultaneously from both 
 git clone https://github.com/mdhishaamakhtar/iris-web-backend
 cd iris-web-backend
 
-python3 -m venv env && source env/bin/activate
-pip install -r requirements.txt
+uv sync
 
 ./dev.sh
 ```
@@ -59,11 +58,11 @@ Swagger docs at [http://localhost:9020/api/docs](http://localhost:9020/api/docs)
 ## Dev
 
 ```bash
-pytest -v                                    # run tests
-pytest --cov=app --cov-report=term-missing   # run tests with coverage
-pytest --cov=app --cov-report=html           # generate HTML coverage report (open htmlcov/index.html)
-ruff format .                                # format
-ruff check .                                 # lint
+uv run pytest                                        # run tests
+uv run pytest --cov=app --cov-report=term-missing    # run tests with coverage
+uv run pytest --cov=app --cov-report=html            # generate HTML coverage report (open htmlcov/index.html)
+uv run ruff format .                                 # format
+uv run ruff check .                                  # lint
 ```
 
 ## Contributors
