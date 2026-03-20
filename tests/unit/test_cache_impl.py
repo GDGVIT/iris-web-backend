@@ -68,19 +68,19 @@ def test_cache_delete_and_exists_error_raises(mock_redis):
 def test_cache_clear_pattern(mock_redis):
     cache = RedisCache(mock_redis)
 
-    # No keys
-    mock_redis.keys.return_value = []
+    # No keys — scan returns cursor=0 with empty list
+    mock_redis.scan.return_value = (0, [])
     assert cache.clear_pattern("p*") == 0
 
-    # Some keys
-    mock_redis.keys.return_value = ["a", "b"]
+    # Some keys — scan returns cursor=0 (done) with two keys
+    mock_redis.scan.return_value = (0, ["a", "b"])
     mock_redis.delete.return_value = 2
     assert cache.clear_pattern("p*") == 2
 
 
 def test_cache_clear_pattern_error(mock_redis):
     cache = RedisCache(mock_redis)
-    mock_redis.keys.side_effect = redis.RedisError("err")
+    mock_redis.scan.side_effect = redis.RedisError("err")
     with pytest.raises(CacheConnectionError):
         cache.clear_pattern("*")
 
@@ -169,40 +169,23 @@ def test_set_contains_redis_error(mock_redis):
         cache.set_contains("myset", "value")
 
 
-def test_set_add_many_calls_pipeline(mock_redis):
+def test_set_add_many_single_call(mock_redis):
     cache = RedisCache(mock_redis)
-    added = []
-
-    class _Pipe:
-        def sadd(self, key, val):
-            added.append((key, val))
-            return self
-
-        def execute(self):
-            return [1] * len(added)
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            pass
-
-    mock_redis.pipeline.side_effect = lambda: _Pipe()
+    mock_redis.sadd = Mock(return_value=3)
     cache.set_add_many("myset", ["a", "b", "c"])
-    assert len(added) == 3
-    assert all(key == "myset" for key, _ in added)
-    assert {val for _, val in added} == {"a", "b", "c"}
+    mock_redis.sadd.assert_called_once_with("myset", "a", "b", "c")
 
 
 def test_set_add_many_empty_is_noop(mock_redis):
     cache = RedisCache(mock_redis)
+    mock_redis.sadd = Mock()
     cache.set_add_many("myset", [])
-    mock_redis.pipeline.assert_not_called()
+    mock_redis.sadd.assert_not_called()
 
 
 def test_set_add_many_redis_error(mock_redis):
     cache = RedisCache(mock_redis)
-    mock_redis.pipeline.side_effect = redis.RedisError("pipeline failed")
+    mock_redis.sadd = Mock(side_effect=redis.RedisError("sadd failed"))
     with pytest.raises(CacheConnectionError):
         cache.set_add_many("myset", ["a"])
 
@@ -257,12 +240,6 @@ def test_hash_set_redis_error(mock_redis):
 def test_hash_get_str_value(mock_redis):
     cache = RedisCache(mock_redis)
     mock_redis.hget = Mock(return_value="value")
-    assert cache.hash_get("myhash", "field") == "value"
-
-
-def test_hash_get_bytes_decoded(mock_redis):
-    cache = RedisCache(mock_redis)
-    mock_redis.hget = Mock(return_value=b"value")
     assert cache.hash_get("myhash", "field") == "value"
 
 

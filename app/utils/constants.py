@@ -95,3 +95,9 @@ WIKIPEDIA_USER_AGENT = "Iris-Wikipedia-Pathfinder/1.0 (https://github.com/mdhish
 # Health check
 # ---------------------------------------------------------------------------
 HEALTH_CHECK_CACHE_KEY = "health_check"
+
+# ---------------------------------------------------------------------------
+# BFS session key TTL — safety net so keys self-expire if cleanup fails.
+# Max task time limit is 600 s; 1 hour gives ample margin.
+# ---------------------------------------------------------------------------
+BFS_STATE_KEY_TTL = 3600

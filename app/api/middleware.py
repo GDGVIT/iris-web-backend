@@ -52,7 +52,7 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
         try:
             return f(*args, **kwargs)
         except PathNotFoundError as e:
-            logger.warning("path_not_found", extra={"error": str(e)})
+            logger.error("path_not_found", extra={"error": str(e)})
             error_response = {
                 "error": True,
                 "message": str(e),

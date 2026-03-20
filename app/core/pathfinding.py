@@ -19,6 +19,7 @@ from app.utils.constants import (
     BFS_FWD_VISITED_PREFIX,
     BFS_PARENT_PREFIX,
     BFS_QUEUE_PREFIX,
+    BFS_STATE_KEY_TTL,
     BFS_VISITED_PREFIX,
 )
 from app.utils.exceptions import (
@@ -116,6 +117,9 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         # Initialize search state
         self.queue_service.push(queue_key, {"page": start_page, "depth": 0})
         self.cache_service.set_add(visited_key, start_page)
+        # Safety-net TTLs: keys self-expire if the cleanup finally block fails
+        self.queue_service.expire(queue_key, BFS_STATE_KEY_TTL)
+        self.cache_service.expire(visited_key, BFS_STATE_KEY_TTL)
 
         nodes_explored = 0
         nodes_lock = threading.Lock()
@@ -408,6 +412,11 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
             self.cache_service.set_add(bwd_vis, end_page)
             self.queue_service.push(fwd_q, {"page": start_page, "depth": 0})
             self.queue_service.push(bwd_q, {"page": end_page, "depth": 0})
+            # Safety-net TTLs: keys self-expire if the cleanup finally block fails
+            self.cache_service.expire(fwd_vis, BFS_STATE_KEY_TTL)
+            self.cache_service.expire(bwd_vis, BFS_STATE_KEY_TTL)
+            self.queue_service.expire(fwd_q, BFS_STATE_KEY_TTL)
+            self.queue_service.expire(bwd_q, BFS_STATE_KEY_TTL)
 
             fwd_max = (self.max_depth + 1) // 2
             bwd_max = self.max_depth // 2

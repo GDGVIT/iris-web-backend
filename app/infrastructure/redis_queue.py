@@ -76,6 +76,13 @@ class RedisQueue(QueueInterface):
             )
             raise CacheConnectionError(f"Queue batch push failed: {e}") from e
 
+    def expire(self, queue_name: str, seconds: int) -> None:
+        """Set a TTL on a queue key. No-op if the key does not exist."""
+        try:
+            self._redis_client.expire(queue_name, seconds)
+        except redis.RedisError as e:
+            raise CacheConnectionError(f"Queue expire failed: {e}") from e
+
     def pop_batch(self, queue_name: str, count: int) -> list[Any]:
         """Pop multiple items from the queue efficiently using a pipeline."""
         if count <= 0:
