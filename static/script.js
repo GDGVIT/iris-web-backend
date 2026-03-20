@@ -69,6 +69,17 @@ class PathFinderUI {
             this.saveCurrentState();
             this.updateButtonState();
         });
+
+        // Keyboard activation for "Currently Exploring" node link
+        document.getElementById('lastNode').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                const el = document.getElementById('lastNode');
+                if (!el.classList.contains('disabled')) {
+                    e.preventDefault();
+                    openWikipediaPage(el.textContent);
+                }
+            }
+        });
     }
 
     restoreStateFromStorage() {
@@ -229,6 +240,7 @@ class PathFinderUI {
         const lastNodeEl = document.getElementById('lastNode');
         lastNodeEl.textContent = '-';
         lastNodeEl.classList.add('disabled');
+        lastNodeEl.setAttribute('tabindex', '-1');
 
         // Reset depth
         this.updateDepthIndicator(0, 10);
@@ -260,8 +272,10 @@ class PathFinderUI {
         lastNodeEl.textContent = ln;
         if (ln && ln !== '-') {
             lastNodeEl.classList.remove('disabled');
+            lastNodeEl.setAttribute('tabindex', '0');
         } else {
             lastNodeEl.classList.add('disabled');
+            lastNodeEl.setAttribute('tabindex', '-1');
         }
     }
 
@@ -565,14 +579,18 @@ class PathFinderUI {
         graph.width = width;
         graph.height = calculatedHeight;
 
-        // Set SVG dimensions properly  
+        // Set SVG dimensions and accessible label
+        const pathDescription = nodes.map(n => n.name).join(' → ');
         svg
             .attr('width', width)
             .attr('height', calculatedHeight)
             .attr('viewBox', `0 0 ${width} ${calculatedHeight}`)
+            .attr('aria-label', `Path visualization: ${pathDescription}`)
             .style('display', 'block');
 
-        // Add arrow marker for directed edges
+        // Add arrow marker for directed edges — color read from CSS token at render time
+        const accentBlue = getComputedStyle(document.documentElement)
+            .getPropertyValue('--accent-blue').trim() || '#58A6FF';
         const defs = svg.append('defs');
         defs.append('marker')
             .attr('id', 'arrowhead')
@@ -584,7 +602,7 @@ class PathFinderUI {
             .attr('orient', 'auto')
             .append('path')
             .attr('d', 'M0,-5L10,0L0,5')
-            .attr('fill', '#58A6FF');
+            .attr('fill', accentBlue);
 
         // Create main group
         const g = svg.append('g');
@@ -798,9 +816,17 @@ class PathFinderUI {
         path.forEach((page, index) => {
             const stepDiv = document.createElement('div');
             stepDiv.className = 'path-step';
-            stepDiv.onclick = () => {
-                window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(page)}`, '_blank');
-            };
+            stepDiv.setAttribute('role', 'button');
+            stepDiv.setAttribute('tabindex', '0');
+            stepDiv.setAttribute('aria-label', `Step ${index + 1}: Open ${page} on Wikipedia`);
+            const openPage = () => window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(page)}`, '_blank');
+            stepDiv.onclick = openPage;
+            stepDiv.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openPage();
+                }
+            });
 
             const stepNumber = document.createElement('div');
             stepNumber.className = 'step-number';

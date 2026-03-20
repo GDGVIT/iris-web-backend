@@ -1,5 +1,4 @@
-/* Import fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Fonts loaded via <link> tags in HTML for non-blocking delivery */
 
 /* Dark Tech Theme Variables */
 :root {
@@ -25,8 +24,6 @@
     --accent-blue-hover: #79C0FF;
     --success-green: #3FB950;
     --danger-red: #F85149;
-    --warning-orange: #D29922;
-    --purple: #A5A2FF;
 
     /* Shadows */
     --shadow-small: 0 1px 0 rgba(240, 246, 252, 0.1);
@@ -114,10 +111,14 @@ header p {
     border: 1px solid var(--border-primary);
     color: var(--accent-blue);
     border-radius: var(--radius-sm);
-    padding: 6px 10px;
+    padding: 10px 14px;
     cursor: pointer;
     font: inherit;
     transition: var(--transition-fast);
+    /* Minimum 44px touch target height */
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
 }
 .link-button:hover {
     background: var(--bg-tertiary);
@@ -191,7 +192,6 @@ header p {
     padding: 32px;
     margin-bottom: 32px;
     box-shadow: var(--shadow-medium);
-    backdrop-filter: blur(10px);
 }
 
 .form-row {
@@ -267,24 +267,7 @@ header p {
     gap: 8px;
     width: 100%;
     height: 54px;
-    position: relative;
-    overflow: hidden;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-    transition: left 0.5s ease;
-}
-
-.btn:hover::before {
-    left: 100%;
 }
 
 .btn-primary {
@@ -474,7 +457,6 @@ header p {
     border: 1px solid var(--border-primary);
     border-radius: var(--radius-lg);
     padding: 32px;
-    padding-bottom: 32px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 14px;
     text-align: center;
@@ -496,6 +478,8 @@ header p {
     font-weight: 600;
     margin-bottom: 0;
     text-align: center;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .activity-bar {
@@ -510,11 +494,10 @@ header p {
 
 .activity-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--accent-blue), var(--accent-blue-hover));
+    background: var(--accent-blue);
     border-radius: 3px;
     width: 60%;
     animation: slide-activity 1.8s ease-in-out infinite;
-    box-shadow: 0 0 10px rgba(88, 166, 255, 0.25);
 }
 
 @keyframes slide-activity {
@@ -553,7 +536,6 @@ header p {
 .depth-dot.active {
     background: var(--accent-blue);
     border-color: var(--accent-blue);
-    box-shadow: 0 0 8px rgba(88, 166, 255, 0.4);
 }
 
 .depth-dot.completed {
@@ -602,6 +584,9 @@ header p {
     text-decoration: underline;
     text-decoration-color: transparent;
     transition: text-decoration-color var(--transition-fast);
+    overflow-wrap: break-word;
+    word-break: break-word;
+    max-width: 100%;
 }
 
 .last-node .stat-value:hover {
@@ -645,11 +630,7 @@ header p {
     .depth-dots {
         gap: 4px;
     }
-    
-    .depth-dot {
-        width: 8px;
-        height: 8px;
-    }
+    /* Keep dots at default 10px — already small, don't reduce further */
 }
 
 @media (max-width: 480px) {
@@ -692,7 +673,7 @@ header p {
     padding-bottom: 16px;
 }
 
-.path-header h3 {
+.path-header h2 {
     color: var(--success-green);
     font-size: 18px;
     font-weight: 600;
@@ -881,6 +862,17 @@ header p {
         flex-direction: column;
         align-items: center;
     }
+
+    /* Reduce oversized loading state on phone viewports */
+    .graph-container.loading {
+        min-height: 440px;
+    }
+
+    /* Contain very long path lists so they don't push content off-screen */
+    .path-steps-container {
+        max-height: 60vh;
+        overflow-y: auto;
+    }
 }
 
 @media (max-width: 480px) {
@@ -909,5 +901,61 @@ header p {
 
     .graph-container {
         min-height: 400px;
+    }
+
+    .graph-container.loading {
+        min-height: 360px;
+    }
+
+    .graph-container svg {
+        height: 320px;
+    }
+}
+
+/* Landscape orientation on mobile: reduce tall elements to avoid filling the entire viewport */
+@media (max-height: 500px) and (orientation: landscape) {
+    header {
+        margin-bottom: 24px;
+        padding: 12px 0;
+    }
+
+    header h1 {
+        font-size: 24px;
+    }
+
+    .graph-container.loading {
+        min-height: 280px;
+    }
+
+    .graph-container svg {
+        height: 260px;
+    }
+
+    .search-progress {
+        gap: 12px;
+        padding: 12px;
+    }
+
+    .search-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .last-node {
+        grid-column: 1 / -1;
+    }
+}
+
+/* Respect reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    .visualization-section.show {
+        animation: none;
     }
 }
