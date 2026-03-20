@@ -63,6 +63,11 @@ class CacheServiceInterface(ABC):
         """Return membership booleans for each value in a single round-trip."""
         pass
 
+    @abstractmethod
+    def expire(self, key: str, seconds: int) -> None:
+        """Set a TTL on an existing key. No-op if the key does not exist."""
+        pass
+
     # --- Hash operations ---
 
     @abstractmethod
@@ -183,4 +188,9 @@ class QueueInterface(ABC):
     @abstractmethod
     def pop_batch(self, queue_name: str, count: int) -> list[Any]:
         """Pop multiple items from queue efficiently."""
+        pass
+
+    @abstractmethod
+    def expire(self, queue_name: str, seconds: int) -> None:
+        """Set a TTL on a queue key. No-op if the key does not exist."""
         pass

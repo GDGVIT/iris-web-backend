@@ -1,4 +1,5 @@
 import os
+import uuid
 
 from flask import Blueprint, jsonify, redirect, request, send_from_directory, url_for
 
@@ -13,6 +14,14 @@ from app.core.factory import (
     get_cache_management_service,
 )
 from app.infrastructure.tasks import find_path_task
+from app.utils.constants import (
+    ALLOWED_CACHE_PREFIXES,
+    CELERY_STATE_FAILURE,
+    CELERY_STATE_PROGRESS,
+    CELERY_STATE_REVOKED,
+    CELERY_STATE_SUCCESS,
+    HEALTH_CHECK_CACHE_KEY,
+)
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -81,10 +90,14 @@ def get_path_route():
     search_request = validate_request_data(SearchRequestSchema, request.get_json())
 
     logger.info(
-        f"Path request: {search_request.start_page} -> {search_request.end_page}"
+        "path_request",
+        extra={
+            "start_page": search_request.start_page,
+            "end_page": search_request.end_page,
+        },
     )
 
-    task = find_path_task.delay(  # type: ignore[attr-defined]
+    task = find_path_task.delay(
         search_request.start_page, search_request.end_page, search_request.algorithm
     )
 
@@ -140,21 +153,31 @@ def get_task_status_route(task_id):
             progress:
               type: object
     """
-    task = find_path_task.AsyncResult(task_id)  # type: ignore[attr-defined]
+    try:
+        uuid.UUID(task_id)
+    except ValueError:
+        return jsonify(
+            {
+                "error": True,
+                "message": "Invalid task ID format",
+                "code": "INVALID_TASK_ID",
+            }
+        ), 404
 
+    task = find_path_task.AsyncResult(task_id)
     if task.state == "PENDING":
         response_data = {
             "status": "PENDING",
             "task_id": task_id,
             "message": "Task is waiting to be processed",
         }
-    elif task.state == "PROGRESS":
+    elif task.state == CELERY_STATE_PROGRESS:
         response_data = {
             "status": "IN_PROGRESS",
             "task_id": task_id,
             "progress": task.info,
         }
-    elif task.state == "SUCCESS":
+    elif task.state == CELERY_STATE_SUCCESS:
         result = task.result
         if isinstance(result, dict) and result.get("status") == "SUCCESS":
             response_data = {
@@ -170,11 +193,16 @@ def get_task_status_route(task_id):
             }
         else:
             response_data = {"status": "SUCCESS", "task_id": task_id, "result": result}
-    elif task.state == "FAILURE":
+    elif task.state == CELERY_STATE_FAILURE:
         response_data = {
             "status": "FAILURE",
             "task_id": task_id,
             "error": str(task.info),
+        }
+    elif task.state == CELERY_STATE_REVOKED:
+        response_data = {
+            "status": CELERY_STATE_REVOKED,
+            "task_id": task_id,
         }
     else:
         response_data = {
@@ -209,8 +237,8 @@ def health_check():
 
         cache_status = "healthy"
         try:
-            cache_service.set("health_check", "ok", ttl=60)
-            cache_value = cache_service.get("health_check")
+            cache_service.set(HEALTH_CHECK_CACHE_KEY, "ok", ttl=60)
+            cache_value = cache_service.get(HEALTH_CHECK_CACHE_KEY)
             if cache_value != "ok":
                 cache_status = "unhealthy: cache test failed"
         except Exception as e:
@@ -242,7 +270,7 @@ def health_check():
         return jsonify(response_data), status_code
 
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error("health_check_failed", extra={"error": str(e)})
         return jsonify({"status": "unhealthy", "error": str(e)}), 503
 
 
@@ -263,13 +291,36 @@ def clear_cache():
             pattern:
               type: string
               default: "wiki_links:*"
-              description: Redis key pattern to clear
+              description: |
+                Redis key pattern to clear. Must start with one of the valid prefixes:
+                - `bfs_*` — BFS session state (all transient search keys:
+                  bfs_queue:*, bfs_visited:*, bfs_parent:*, bfs_fwd_*:*, bfs_bwd_*:*)
+                - `wiki_links:*` — forward links cache (Wikipedia outbound links
+                  per page)
+                - `wiki_backlinks:*` — backlinks cache (Wikipedia inbound links
+                  per page)
+                - `path:*` — cached pathfinding results (keyed by start:end page pair)
+                - `page_info:*` — cached Wikipedia page metadata (existence, redirects)
     responses:
       200:
         description: Cache cleared successfully
+      400:
+        description: Pattern prefix not allowed
     """
     data = request.get_json()
     pattern = data.get("pattern", "wiki_links:*")
+
+    if not any(pattern.startswith(p) for p in ALLOWED_CACHE_PREFIXES):
+        return jsonify(
+            {
+                "error": True,
+                "message": (
+                    "Pattern must start with one of: "
+                    + ", ".join(ALLOWED_CACHE_PREFIXES)
+                ),
+                "code": "INVALID_CACHE_PATTERN",
+            }
+        ), 400
 
     try:
         cache_service = get_cache_management_service()
@@ -283,7 +334,7 @@ def clear_cache():
         return jsonify(response_data), 200
 
     except Exception as e:
-        logger.error(f"Cache clear failed: {e}")
+        logger.error("cache_clear_failed", extra={"error": str(e)})
         raise
 
 
@@ -336,7 +387,7 @@ def list_tasks():
             }
         )
     except Exception as e:
-        logger.error(f"Failed to inspect Celery workers: {e}")
+        logger.error("celery_inspect_failed", extra={"error": str(e)})
         return jsonify(
             {"error": "Could not reach Celery workers", "detail": str(e)}
         ), 503
@@ -376,21 +427,32 @@ def cancel_task(task_id):
       404:
         description: Task not found or already completed
     """
-    terminate = request.args.get("terminate", "true").lower() != "false"
-
-    # Check current state before revoking
-    task = find_path_task.AsyncResult(task_id)  # type: ignore[attr-defined]
-    if task.state in ("SUCCESS", "FAILURE"):
+    try:
+        uuid.UUID(task_id)
+    except ValueError:
         return jsonify(
             {
-                "revoked": False,
-                "task_id": task_id,
-                "reason": f"Task already in terminal state: {task.state}",
+                "error": True,
+                "message": "Invalid task ID format",
+                "code": "INVALID_TASK_ID",
             }
         ), 404
 
+    terminate = request.args.get("terminate", "true").lower() != "false"
+
+    # Check current state before revoking
+    task = find_path_task.AsyncResult(task_id)
+    if task.state in (CELERY_STATE_SUCCESS, CELERY_STATE_FAILURE):
+        return jsonify(
+            {
+                "error": True,
+                "message": f"Task already in terminal state: {task.state}",
+                "code": "TASK_ALREADY_COMPLETE",
+            }
+        ), 409
+
     celery.control.revoke(task_id, terminate=terminate, signal="SIGTERM")
-    logger.info(f"Revoked task {task_id} (terminate={terminate})")
+    logger.info("task_revoked", extra={"task_id": task_id, "terminate": terminate})
 
     return jsonify({"revoked": True, "task_id": task_id, "terminated": terminate})
 
@@ -442,7 +504,9 @@ def cancel_all_tasks():
         for task_id in task_ids:
             celery.control.revoke(task_id, terminate=terminate, signal="SIGTERM")
 
-        logger.info(f"Revoked {len(task_ids)} tasks (terminate={terminate})")
+        logger.info(
+            "all_tasks_revoked", extra={"count": len(task_ids), "terminate": terminate}
+        )
 
         return jsonify(
             {
@@ -452,7 +516,7 @@ def cancel_all_tasks():
             }
         )
     except Exception as e:
-        logger.error(f"Failed to cancel all tasks: {e}")
+        logger.error("cancel_all_tasks_failed", extra={"error": str(e)})
         return jsonify(
             {"error": "Could not reach Celery workers", "detail": str(e)}
         ), 503
@@ -465,7 +529,7 @@ def index():
     try:
         return send_from_directory(_STATIC_DIR, "index.html")
     except Exception as e:
-        logger.error(f"Failed to serve UI: {e}")
+        logger.error("ui_serve_failed", extra={"error": str(e)})
         return jsonify({"error": "UI not available"}), 404
 
 
@@ -482,7 +546,9 @@ def static_files(filename):
     try:
         return send_from_directory(_STATIC_DIR, filename)
     except Exception as e:
-        logger.error(f"Failed to serve static file {filename}: {e}")
+        logger.error(
+            "static_serve_failed", extra={"filename": filename, "error": str(e)}
+        )
         return jsonify({"error": "File not found"}), 404
 
 

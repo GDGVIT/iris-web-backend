@@ -97,7 +97,7 @@ class TestSearchRequest:
         assert request.start_page == "Page A"
         assert request.end_page == "Page B"
         assert request.max_depth is None
-        assert request.algorithm == "bfs"
+        assert request.algorithm == "bidirectional"
         assert request.validate() is True
 
     def test_invalid_search_request_empty_start(self):

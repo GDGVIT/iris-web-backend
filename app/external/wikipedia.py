@@ -7,6 +7,12 @@ from functools import partial
 import requests
 
 from app.core.interfaces import CacheServiceInterface, WikipediaClientInterface
+from app.utils.constants import (
+    CACHE_PREFIX_WIKI_BACKLINKS,
+    CACHE_PREFIX_WIKI_LINKS,
+    WIKIPEDIA_API_URL,
+    WIKIPEDIA_USER_AGENT,
+)
 from app.utils.exceptions import WikipediaAPIError
 from app.utils.logging import get_logger
 
@@ -20,7 +26,7 @@ class WikipediaClient(WikipediaClientInterface):
         self,
         cache_service: CacheServiceInterface | None = None,
         session: requests.Session | None = None,
-        max_workers: int = 10,
+        max_workers: int = 3,
         cache_ttl: int = 86400,  # 24 hours
         api_timeout: int = 15,
         max_paginate_calls: int = 3,
@@ -35,7 +41,7 @@ class WikipediaClient(WikipediaClientInterface):
         self.max_paginate_calls = max_paginate_calls
         self.request_delay = request_delay
         self.max_retries = max_retries
-        self.base_url = "https://en.wikipedia.org/w/api.php"
+        self.base_url = WIKIPEDIA_API_URL
 
         # Shared rate limiter — enforces minimum interval between all requests
         # across every thread that shares this client instance.
@@ -43,11 +49,7 @@ class WikipediaClient(WikipediaClientInterface):
         self._last_request_time: float = 0.0
 
         # Configure session
-        self.session.headers.update(
-            {
-                "User-Agent": "Iris-Wikipedia-Pathfinder/1.0 (https://github.com/mdhishaamakhtar/iris-web-backend)"
-            }
-        )
+        self.session.headers.update({"User-Agent": WIKIPEDIA_USER_AGENT})
 
     def _acquire_rate_slot(self) -> None:
         """Block until the global rate limit allows the next request.
@@ -82,11 +84,16 @@ class WikipediaClient(WikipediaClientInterface):
                 )
             except requests.RequestException as e:
                 if attempt == self.max_retries - 1:
-                    raise WikipediaAPIError(f"API request failed: {e}")
+                    raise WikipediaAPIError(f"API request failed: {e}") from e
                 wait = 2**attempt
                 logger.warning(
-                    f"Request error (attempt {attempt + 1}/{self.max_retries}), "
-                    f"retrying in {wait}s: {e}"
+                    "request_error_retry",
+                    extra={
+                        "attempt": attempt + 1,
+                        "max_retries": self.max_retries,
+                        "wait": wait,
+                        "error": str(e),
+                    },
                 )
                 time.sleep(wait)
                 continue
@@ -98,8 +105,12 @@ class WikipediaClient(WikipediaClientInterface):
                     )
                 wait = int(response.headers.get("Retry-After", 2 ** (attempt + 1)))
                 logger.warning(
-                    f"Rate limited (429), retrying in {wait}s "
-                    f"(attempt {attempt + 1}/{self.max_retries})"
+                    "rate_limited",
+                    extra={
+                        "attempt": attempt + 1,
+                        "max_retries": self.max_retries,
+                        "wait": wait,
+                    },
                 )
                 time.sleep(wait)
                 continue
@@ -107,12 +118,18 @@ class WikipediaClient(WikipediaClientInterface):
             if response.status_code >= 500:
                 if attempt == self.max_retries - 1:
                     raise WikipediaAPIError(
-                        f"Server error {response.status_code} after {self.max_retries} retries"
+                        f"Server error {response.status_code} after "
+                        f"{self.max_retries} retries"
                     )
                 wait = 2**attempt
                 logger.warning(
-                    f"Server error {response.status_code} "
-                    f"(attempt {attempt + 1}/{self.max_retries}), retrying in {wait}s"
+                    "server_error_retry",
+                    extra={
+                        "status_code": response.status_code,
+                        "attempt": attempt + 1,
+                        "max_retries": self.max_retries,
+                        "wait": wait,
+                    },
                 )
                 time.sleep(wait)
                 continue
@@ -120,7 +137,7 @@ class WikipediaClient(WikipediaClientInterface):
             try:
                 response.raise_for_status()
             except requests.HTTPError as e:
-                raise WikipediaAPIError(f"API error: {e}")
+                raise WikipediaAPIError(f"API error: {e}") from e
 
             return response
 
@@ -159,14 +176,15 @@ class WikipediaClient(WikipediaClientInterface):
                 cached_links = self.cache_service.get(cache_key)
                 if cached_links is not None:
                     results[title] = cached_links
-                    logger.debug(f"Cache hit for page: {title}")
+                    logger.debug("cache_hit", extra={"page": title})
                     if on_page_fetched:
                         on_page_fetched(title, cached_links)
                 else:
                     uncached_titles.append(title)
 
             logger.info(
-                f"Cache hits: {len(results)}, Cache misses: {len(uncached_titles)}"
+                "cache_lookup",
+                extra={"hits": len(results), "misses": len(uncached_titles)},
             )
         else:
             uncached_titles = page_titles
@@ -189,7 +207,9 @@ class WikipediaClient(WikipediaClientInterface):
                     except WikipediaAPIError:
                         raise
                     except Exception as e:
-                        logger.error(f"Unexpected error fetching '{title}': {e}")
+                        logger.error(
+                            "page_fetch_error", extra={"page": title, "error": str(e)}
+                        )
                         page_result = {title: []}
                     fresh_results.update(page_result)
                     if on_page_fetched:
@@ -200,7 +220,10 @@ class WikipediaClient(WikipediaClientInterface):
                 for title, links in fresh_results.items():
                     cache_key = f"{cache_prefix}:{title}"
                     self.cache_service.set(cache_key, links, ttl=self.cache_ttl)
-                    logger.debug(f"Cached {cache_prefix} for page: {title}")
+                    logger.debug(
+                        "page_cached",
+                        extra={"cache_prefix": cache_prefix, "page": title},
+                    )
 
             results.update(fresh_results)
 
@@ -224,7 +247,10 @@ class WikipediaClient(WikipediaClientInterface):
             WikipediaAPIError: When API requests fail
         """
         return self._bulk_fetch(
-            page_titles, "wiki_links", self._fetch_single_page, on_page_fetched
+            page_titles,
+            CACHE_PREFIX_WIKI_LINKS,
+            self._fetch_single_page,
+            on_page_fetched,
         )
 
     def get_backlinks_bulk(
@@ -246,7 +272,7 @@ class WikipediaClient(WikipediaClientInterface):
         """
         return self._bulk_fetch(
             page_titles,
-            "wiki_backlinks",
+            CACHE_PREFIX_WIKI_BACKLINKS,
             self._fetch_backlinks_single_page,
             on_page_fetched,
         )
@@ -359,7 +385,7 @@ class WikipediaClient(WikipediaClientInterface):
         for title in original_batch:
             if title not in results:
                 results[title] = []
-                logger.warning(f"No links found for page: {title}")
+                logger.warning("no_links_found", extra={"page": title})
 
         return results
 
@@ -373,7 +399,7 @@ class WikipediaClient(WikipediaClientInterface):
         Returns:
             True if page exists, False otherwise
         """
-        params = {
+        params: dict[str, str | int] = {
             "action": "query",
             "format": "json",
             "titles": page_title,
@@ -381,19 +407,18 @@ class WikipediaClient(WikipediaClientInterface):
         }
 
         try:
-            response = self.session.get(
-                self.base_url, params=params, timeout=self.api_timeout
-            )
-            response.raise_for_status()
-            data = response.json().get("query", {})
+            data = self._request_with_backoff(params).json().get("query", {})
 
             pages = data.get("pages", {})
             for page_data in pages.values():
                 return "missing" not in page_data
 
             return False
-        except requests.RequestException as e:
-            logger.error(f"Failed to check page existence for {page_title}: {e}")
+        except WikipediaAPIError as e:
+            logger.error(
+                "page_existence_check_failed",
+                extra={"page": page_title, "error": str(e)},
+            )
             return False
 
     def get_page_with_redirect_info(self, page_title: str) -> dict | None:
@@ -464,7 +489,9 @@ class WikipediaClient(WikipediaClientInterface):
             }
 
         except requests.RequestException as e:
-            logger.error(f"Failed to get page redirect info for {page_title}: {e}")
+            logger.error(
+                "page_redirect_info_failed", extra={"page": page_title, "error": str(e)}
+            )
             return {
                 "exists": False,
                 "final_title": page_title,
@@ -509,5 +536,7 @@ class WikipediaClient(WikipediaClientInterface):
 
             return None
         except requests.RequestException as e:
-            logger.error(f"Failed to get page info for {page_title}: {e}")
+            logger.error(
+                "page_info_failed", extra={"page": page_title, "error": str(e)}
+            )
             return None

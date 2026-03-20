@@ -22,8 +22,10 @@ class RedisQueue(QueueInterface):
             serialized_item = json.dumps(item)
             self._redis_client.rpush(queue_name, serialized_item)
         except (redis.RedisError, TypeError, ValueError) as e:
-            logger.error(f"Failed to push item to queue {queue_name}: {e}")
-            raise CacheConnectionError(f"Queue push failed: {e}")
+            logger.error(
+                "queue_push_failed", extra={"queue": queue_name, "error": str(e)}
+            )
+            raise CacheConnectionError(f"Queue push failed: {e}") from e
 
     def pop(self, queue_name: str) -> Any | None:
         """Pop item from the left side of the queue (FIFO)."""
@@ -33,24 +35,30 @@ class RedisQueue(QueueInterface):
                 return None
             return json.loads(item)  # type: ignore[arg-type]
         except (redis.RedisError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to pop item from queue {queue_name}: {e}")
-            raise CacheConnectionError(f"Queue pop failed: {e}")
+            logger.error(
+                "queue_pop_failed", extra={"queue": queue_name, "error": str(e)}
+            )
+            raise CacheConnectionError(f"Queue pop failed: {e}") from e
 
     def length(self, queue_name: str) -> int:
         """Get the length of the queue."""
         try:
             return self._redis_client.llen(queue_name)  # type: ignore[return-value]
         except redis.RedisError as e:
-            logger.error(f"Failed to get queue length for {queue_name}: {e}")
-            raise CacheConnectionError(f"Queue length check failed: {e}")
+            logger.error(
+                "queue_length_failed", extra={"queue": queue_name, "error": str(e)}
+            )
+            raise CacheConnectionError(f"Queue length check failed: {e}") from e
 
     def clear(self, queue_name: str) -> None:
         """Clear all items from the queue."""
         try:
             self._redis_client.delete(queue_name)
         except redis.RedisError as e:
-            logger.error(f"Failed to clear queue {queue_name}: {e}")
-            raise CacheConnectionError(f"Queue clear failed: {e}")
+            logger.error(
+                "queue_clear_failed", extra={"queue": queue_name, "error": str(e)}
+            )
+            raise CacheConnectionError(f"Queue clear failed: {e}") from e
 
     def push_batch(self, queue_name: str, items: list[Any]) -> None:
         """Push multiple items to the queue efficiently using a pipeline."""
@@ -63,8 +71,17 @@ class RedisQueue(QueueInterface):
                     pipe.rpush(queue_name, json.dumps(item))
                 pipe.execute()
         except (redis.RedisError, TypeError, ValueError) as e:
-            logger.error(f"Failed to push batch to queue {queue_name}: {e}")
-            raise CacheConnectionError(f"Queue batch push failed: {e}")
+            logger.error(
+                "queue_push_batch_failed", extra={"queue": queue_name, "error": str(e)}
+            )
+            raise CacheConnectionError(f"Queue batch push failed: {e}") from e
+
+    def expire(self, queue_name: str, seconds: int) -> None:
+        """Set a TTL on a queue key. No-op if the key does not exist."""
+        try:
+            self._redis_client.expire(queue_name, seconds)
+        except redis.RedisError as e:
+            raise CacheConnectionError(f"Queue expire failed: {e}") from e
 
     def pop_batch(self, queue_name: str, count: int) -> list[Any]:
         """Pop multiple items from the queue efficiently using a pipeline."""
@@ -78,5 +95,7 @@ class RedisQueue(QueueInterface):
                 results = pipe.execute()
             return [json.loads(r) for r in results if r is not None]
         except (redis.RedisError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to pop batch from queue {queue_name}: {e}")
-            raise CacheConnectionError(f"Queue batch pop failed: {e}")
+            logger.error(
+                "queue_pop_batch_failed", extra={"queue": queue_name, "error": str(e)}
+            )
+            raise CacheConnectionError(f"Queue batch pop failed: {e}") from e

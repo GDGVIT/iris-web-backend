@@ -6,8 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Iris: Wikipedia Path Finder</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon-dark.svg" id="favicon">
+    <!-- Preconnect to Google Fonts for faster font delivery -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="/static/styles.css">
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- defer: downloads in parallel with HTML parsing, executes after parse completes -->
+    <script src="https://d3js.org/d3.v7.min.js" defer></script>
     <script>
         // Dynamic favicon switching for Chrome compatibility
         function updateFavicon() {
@@ -29,7 +34,7 @@
         <header>
             <div class="header-logo-container">
                 <img src="/static/logo.svg" alt="Iris Logo" class="header-logo">
-                <h1 style="margin: 0;">Iris: Wikipedia Path Finder</h1>
+                <h1>Iris: Wikipedia Path Finder</h1>
             </div>
             <p>Discover a path between any two Wikipedia pages through connected links</p>
             <div class="header-actions">
@@ -40,7 +45,7 @@
         <!-- About / How-To info box -->
         <div id="aboutBox" class="info-box hidden" role="region" aria-label="About Iris and how to use it">
             <div class="info-header">
-                <h3 class="info-title">What is Iris? How to use</h3>
+                <h2 class="info-title">What is Iris? How to use</h2>
             </div>
             <div class="info-content">
                 <p><strong>Iris</strong> discovers a hyperlink path between two Wikipedia pages. Under the hood it runs a high‑performance graph search and streams live progress, then visualizes the path so you can explore how topics connect.</p>
@@ -63,22 +68,23 @@
             <div class="form-row">
                 <div class="form-group">
                     <label for="startPage">Start Page</label>
-                    <input type="text" id="startPage" placeholder="Barack Obama" />
+                    <input type="text" id="startPage" placeholder="Barack Obama" required aria-required="true" />
                 </div>
 
                 <div class="form-group">
                     <label for="endPage">End Page</label>
-                    <input type="text" id="endPage" placeholder="Mathematics" />
+                    <input type="text" id="endPage" placeholder="Mathematics" required aria-required="true" />
                 </div>
             </div>
 
             <div class="button-group">
                 <button id="findPathBtn" class="btn btn-primary" onclick="findPath()">Find Path</button>
+                <button id="cancelBtn" class="btn btn-cancel hidden" onclick="cancelSearch()">Cancel Search</button>
                 <button id="clearBtn" class="btn btn-secondary" onclick="clearVisualization()">Clear</button>
             </div>
         </div>
 
-        <div id="error" class="error-message hidden">
+        <div id="error" class="error-message hidden" role="alert">
             <p id="errorMessage"></p>
         </div>
 
@@ -112,6 +118,10 @@
                             <div class="depth-dot"></div>
                             <div class="depth-dot"></div>
                             <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
+                            <div class="depth-dot"></div>
                         </div>
                     </div>
                     
@@ -130,17 +140,17 @@
                         </div>
                         <div class="search-stat last-node">
                             <div class="stat-label">Currently Exploring</div>
-                            <div class="stat-value" id="lastNode" onclick="openWikipediaPage(this.textContent)">-</div>
+                            <div class="stat-value" id="lastNode" role="button" tabindex="-1" onclick="openWikipediaPage(this.textContent)">-</div>
                         </div>
                     </div>
                 </div>
                 
-                <svg id="graph" class="hidden"></svg>
+                <svg id="graph" class="hidden" role="img" aria-label="Path visualization graph"></svg>
             </div>
 
             <div id="pathStepsContainer" class="path-steps-container hidden">
                 <div class="path-header">
-                    <h3>Path Found</h3>
+                    <h2>Path Found</h2>
                     <div class="path-stats">
                         <span id="pathLength" class="stat"></span>
                         <span id="searchTime" class="stat"></span>
@@ -152,7 +162,7 @@
         </div>
     </div>
 
-    <script src="/static/script.js"></script>
+    <script src="/static/script.js" defer></script>
     <script>
         // About box toggle with timed resurfacing and sticky open state
         document.addEventListener('DOMContentLoaded', () => {

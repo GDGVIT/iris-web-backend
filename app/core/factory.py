@@ -11,6 +11,7 @@ from app.core.services import (
 from app.external.wikipedia import WikipediaClient
 from app.infrastructure.cache import RedisCache, get_redis_connection
 from app.infrastructure.redis_queue import RedisQueue
+from app.utils.constants import ALGORITHM_BIDIRECTIONAL
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -57,7 +58,7 @@ class ServiceFactory:
         """Get or create Wikipedia client singleton."""
         if cls._wikipedia_client is None:
             cache_service = cls.get_cache_service()
-            max_workers = current_app.config.get("WIKIPEDIA_MAX_WORKERS", 10)
+            max_workers = current_app.config.get("WIKIPEDIA_MAX_WORKERS", 3)
             cache_ttl = current_app.config.get("CACHE_TTL", 86400)
             api_timeout = current_app.config.get("WIKIPEDIA_API_TIMEOUT", 15)
             max_paginate_calls = current_app.config.get(
@@ -79,7 +80,9 @@ class ServiceFactory:
 
     @classmethod
     def create_pathfinding_service(
-        cls, algorithm: str = "bidirectional", progress_callback: Callable | None = None
+        cls,
+        algorithm: str = ALGORITHM_BIDIRECTIONAL,
+        progress_callback: Callable | None = None,
     ) -> PathFindingService:
         """Create pathfinding service with specified algorithm."""
         wikipedia_client = cls.get_wikipedia_client()
@@ -88,9 +91,9 @@ class ServiceFactory:
 
         # Create path finder based on algorithm
         max_depth = current_app.config.get("MAX_SEARCH_DEPTH", 6)
-        batch_size = current_app.config.get("BFS_BATCH_SIZE", 50)
+        batch_size = current_app.config.get("BFS_BATCH_SIZE", 20)
 
-        if algorithm.lower() == "bidirectional":
+        if algorithm.lower() == ALGORITHM_BIDIRECTIONAL:
             path_finder = BidirectionalBFSPathFinder(
                 wikipedia_client,
                 cache_service,
@@ -132,7 +135,7 @@ class ServiceFactory:
             try:
                 cls._redis_client.close()
             except Exception as e:
-                logger.error(f"Error closing Redis client: {e}")
+                logger.error("redis_close_error", extra={"error": str(e)})
 
         cls._redis_client = None
         cls._cache_service = None
@@ -142,7 +145,7 @@ class ServiceFactory:
 
 
 def get_pathfinding_service(
-    algorithm: str = "bidirectional", progress_callback: Callable | None = None
+    algorithm: str = ALGORITHM_BIDIRECTIONAL, progress_callback: Callable | None = None
 ) -> PathFindingService:
     """Convenience function to get pathfinding service."""
     return ServiceFactory.create_pathfinding_service(algorithm, progress_callback)

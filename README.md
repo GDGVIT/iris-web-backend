@@ -16,7 +16,7 @@ It uses **bidirectional BFS** (default) which searches simultaneously from both 
 
 ## What It Does
 
-- Find Wikipedia paths via **bidirectional BFS** (default) or standard forward-only BFS — explores from both pages simultaneously to meet in the middle
+- Find Wikipedia paths via **bidirectional BFS** (default) or standard forward-only BFS
 - Async task processing — searches run in the background, results polled live
 - Real-time progress updates during search (aggregated from both search frontiers)
 - Interactive D3.js graph visualization of the path
@@ -29,7 +29,9 @@ It uses **bidirectional BFS** (default) which searches simultaneously from both 
 [![Redis](https://img.shields.io/badge/Redis-6-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io)
 [![Gunicorn](https://img.shields.io/badge/Gunicorn-23-499848?style=for-the-badge&logo=gunicorn&logoColor=white)](https://gunicorn.org/)
 [![D3.js](https://img.shields.io/badge/D3.js-Graph%20Viz-F9A03C?style=for-the-badge&logo=d3.js&logoColor=white)](https://d3js.org/)
+[![uv](https://img.shields.io/badge/uv-package%20manager-D7FF64?style=for-the-badge&logo=astral&logoColor=black)](https://github.com/astral-sh/uv)
 [![Ruff](https://img.shields.io/badge/Ruff-lint%20%2B%20format-D7FF64?style=for-the-badge&logo=ruff&logoColor=black)](https://github.com/astral-sh/ruff)
+[![ty](https://img.shields.io/badge/ty-type%20checker-D7FF64?style=for-the-badge&logo=astral&logoColor=black)](https://github.com/astral-sh/ty)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](./LICENSE)
 
 ## Quick Start
@@ -38,8 +40,7 @@ It uses **bidirectional BFS** (default) which searches simultaneously from both 
 git clone https://github.com/mdhishaamakhtar/iris-web-backend
 cd iris-web-backend
 
-python3 -m venv env && source env/bin/activate
-pip install -r requirements.txt
+uv sync
 
 ./dev.sh
 ```
@@ -59,11 +60,12 @@ Swagger docs at [http://localhost:9020/api/docs](http://localhost:9020/api/docs)
 ## Dev
 
 ```bash
-pytest -v                                    # run tests
-pytest --cov=app --cov-report=term-missing   # run tests with coverage
-pytest --cov=app --cov-report=html           # generate HTML coverage report (open htmlcov/index.html)
-ruff format .                                # format
-ruff check .                                 # lint
+uv run pytest                                        # run tests
+uv run pytest --cov=app --cov-report=term-missing    # run tests with coverage
+uv run pytest --cov=app --cov-report=html            # generate HTML coverage report (open htmlcov/index.html)
+uv run ruff format .                                 # format
+uv run ruff check .                                  # lint
+uv run ty check                                      # type check
 ```
 
 ## Contributors

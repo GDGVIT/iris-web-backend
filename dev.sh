@@ -8,7 +8,7 @@
 # Usage:
 #   ./dev.sh
 #
-# Requires: redis-server, Python venv activated with requirements installed.
+# Requires: redis-server, uv (https://docs.astral.sh/uv).
 # Server runs at http://localhost:9020
 
 echo "Starting Iris (development)"
@@ -39,12 +39,12 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM
 
-celery -A celery_worker.celery worker --loglevel=info --queues=celery,pathfinding,health,maintenance &
+uv run celery -A celery_worker.celery worker --loglevel=info --queues=celery,pathfinding,health,maintenance &
 CELERY_PID=$!
 
 sleep 2
 
-python run.py &
+uv run python run.py &
 WEB_PID=$!
 
 sleep 1

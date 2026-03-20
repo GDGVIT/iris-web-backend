@@ -12,6 +12,7 @@ from app.core.models import (
     SearchRequest,
     WikipediaPage,
 )
+from app.utils.constants import CACHE_PREFIX_PAGE_INFO, CACHE_PREFIX_PATH
 from app.utils.exceptions import (
     DisambiguationPageError,
     InvalidPageError,
@@ -52,11 +53,12 @@ class PathFindingService:
             raise InvalidPageError("Invalid search request")
 
         # Check cache first
-        cache_key = f"path:{request.start_page}:{request.end_page}"
+        cache_key = f"{CACHE_PREFIX_PATH}:{request.start_page}:{request.end_page}"
         cached_result = self.cache_service.get(cache_key)
         if cached_result:
             logger.info(
-                f"Path found in cache: {request.start_page} -> {request.end_page}"
+                "path_cache_hit",
+                extra={"start_page": request.start_page, "end_page": request.end_page},
             )
             return PathResult(**cached_result)
 
@@ -83,19 +85,38 @@ class PathFindingService:
             # Cache the result
             self.cache_service.set(
                 cache_key,
-                result.__dict__,
+                {
+                    "path": result.path,
+                    "length": result.length,
+                    "start_page": result.start_page,
+                    "end_page": result.end_page,
+                    "search_time": result.search_time,
+                    "nodes_explored": result.nodes_explored,
+                },
                 ttl=current_app.config.get("CACHE_PATH_TTL", 3600),
             )
 
             logger.info(
-                f"Path found: {request.start_page} -> {request.end_page} (length: {len(path)}, time: {search_time:.2f}s)"
+                "path_found",
+                extra={
+                    "start_page": request.start_page,
+                    "end_page": request.end_page,
+                    "path_length": len(path),
+                    "search_time": round(search_time, 3),
+                },
             )
             return result
 
         except Exception as e:
             search_time = time.time() - start_time
             logger.error(
-                f"Pathfinding failed: {request.start_page} -> {request.end_page} (time: {search_time:.2f}s): {e}"
+                "pathfinding_failed",
+                extra={
+                    "start_page": request.start_page,
+                    "end_page": request.end_page,
+                    "search_time": round(search_time, 3),
+                    "error": str(e),
+                },
             )
             raise
 
@@ -127,8 +148,8 @@ class PathFindingService:
             self.wikipedia_client.get_page_with_redirect_info(end_page) or _default
         )
 
-        start_exists = start_info.get("exists", False)
-        end_exists = end_info.get("exists", False)
+        start_exists = bool(start_info.get("exists", False))
+        end_exists = bool(end_info.get("exists", False))
 
         validation_details = {
             "start_page": {
@@ -149,7 +170,8 @@ class PathFindingService:
 
         # Check if end page is disambiguation - this should fail
         if end_exists and end_info.get("is_disambiguation", False):
-            final_title = end_info.get("final_title", end_page)
+            raw_title = end_info.get("final_title")
+            final_title: str = raw_title if isinstance(raw_title, str) else end_page
             raise DisambiguationPageError(end_page, final_title)
 
         # Note: We allow start page to be disambiguation as it might have useful links
@@ -174,7 +196,7 @@ class WikipediaService:
             raise InvalidPageError("Page title cannot be empty")
 
         # Check cache first
-        cache_key = f"page_info:{page_title}"
+        cache_key = f"{CACHE_PREFIX_PAGE_INFO}:{page_title}"
         cached_info = self.cache_service.get(cache_key)
         if cached_info:
             return WikipediaPage(**cached_info)
@@ -193,7 +215,12 @@ class WikipediaService:
         # Cache the result
         self.cache_service.set(
             cache_key,
-            page.__dict__,
+            {
+                "title": page.title,
+                "page_id": page.page_id,
+                "last_modified": page.last_modified,
+                "links": page.links,
+            },
             ttl=current_app.config.get("CACHE_PAGE_TTL", 7200),
         )
 
@@ -211,7 +238,10 @@ class CacheManagementService:
         try:
             return self.cache_service.clear_pattern(pattern)
         except Exception as e:
-            logger.error(f"Failed to clear cache pattern {pattern}: {e}")
+            logger.error(
+                "cache_clear_pattern_failed",
+                extra={"pattern": pattern, "error": str(e)},
+            )
             return 0
 
     def get_cache_stats(self) -> dict:
@@ -223,5 +253,5 @@ class CacheManagementService:
                 "message": "Cache statistics not implemented",
             }
         except Exception as e:
-            logger.error(f"Failed to get cache stats: {e}")
+            logger.error("cache_stats_failed", extra={"error": str(e)})
             return {"status": "error", "message": str(e)}

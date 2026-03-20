@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, cast
 
 import redis
 
@@ -25,8 +25,8 @@ class RedisCache(CacheServiceInterface):
                 return None
             return json.loads(value)  # type: ignore[arg-type]
         except (redis.RedisError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to get value from cache for key {key}: {e}")
-            raise CacheConnectionError(f"Cache get failed: {e}")
+            logger.error("cache_get_failed", extra={"key": key, "error": str(e)})
+            raise CacheConnectionError(f"Cache get failed: {e}") from e
 
     def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         """Set value in cache with optional TTL."""
@@ -35,24 +35,24 @@ class RedisCache(CacheServiceInterface):
             serialized_value = json.dumps(value)
             self._redis_client.setex(key, ttl, serialized_value)
         except (redis.RedisError, TypeError, ValueError) as e:
-            logger.error(f"Failed to set value in cache for key {key}: {e}")
-            raise CacheConnectionError(f"Cache set failed: {e}")
+            logger.error("cache_set_failed", extra={"key": key, "error": str(e)})
+            raise CacheConnectionError(f"Cache set failed: {e}") from e
 
     def delete(self, key: str) -> None:
         """Delete key from cache."""
         try:
             self._redis_client.delete(key)
         except redis.RedisError as e:
-            logger.error(f"Failed to delete key from cache: {key}: {e}")
-            raise CacheConnectionError(f"Cache delete failed: {e}")
+            logger.error("cache_delete_failed", extra={"key": key, "error": str(e)})
+            raise CacheConnectionError(f"Cache delete failed: {e}") from e
 
     def exists(self, key: str) -> bool:
         """Check if key exists in cache."""
         try:
             return bool(self._redis_client.exists(key))
         except redis.RedisError as e:
-            logger.error(f"Failed to check key existence in cache: {key}: {e}")
-            raise CacheConnectionError(f"Cache exists check failed: {e}")
+            logger.error("cache_exists_failed", extra={"key": key, "error": str(e)})
+            raise CacheConnectionError(f"Cache exists check failed: {e}") from e
 
     def delete_many(self, keys: list[str]) -> None:
         """Delete multiple keys in a single pipeline round-trip."""
@@ -64,8 +64,10 @@ class RedisCache(CacheServiceInterface):
                     pipe.delete(key)
                 pipe.execute()
         except redis.RedisError as e:
-            logger.error(f"Failed to delete keys {keys}: {e}")
-            raise CacheConnectionError(f"Cache delete_many failed: {e}")
+            logger.error(
+                "cache_delete_many_failed", extra={"keys": keys, "error": str(e)}
+            )
+            raise CacheConnectionError(f"Cache delete_many failed: {e}") from e
 
     def ping(self) -> bool:
         """Return True if Redis is reachable."""
@@ -79,26 +81,23 @@ class RedisCache(CacheServiceInterface):
         try:
             self._redis_client.sadd(key, value)
         except redis.RedisError as e:
-            raise CacheConnectionError(f"set_add failed: {e}")
+            raise CacheConnectionError(f"set_add failed: {e}") from e
 
     def set_add_many(self, key: str, values: list[str]) -> None:
-        """Add multiple values to a Redis set in one pipeline round-trip."""
+        """Add multiple values to a Redis set in a single SADD call."""
         if not values:
             return
         try:
-            with self._redis_client.pipeline() as pipe:
-                for v in values:
-                    pipe.sadd(key, v)
-                pipe.execute()
+            self._redis_client.sadd(key, *values)
         except redis.RedisError as e:
-            raise CacheConnectionError(f"set_add_many failed: {e}")
+            raise CacheConnectionError(f"set_add_many failed: {e}") from e
 
     def set_contains(self, key: str, value: str) -> bool:
         """Return True if value is a member of the set."""
         try:
             return bool(self._redis_client.sismember(key, value))
         except redis.RedisError as e:
-            raise CacheConnectionError(f"set_contains failed: {e}")
+            raise CacheConnectionError(f"set_contains failed: {e}") from e
 
     def set_contains_many(self, key: str, values: list[str]) -> list[bool]:
         """Return membership booleans for each value in one pipeline round-trip."""
@@ -110,14 +109,14 @@ class RedisCache(CacheServiceInterface):
                     pipe.sismember(key, v)
                 return [bool(r) for r in pipe.execute()]
         except redis.RedisError as e:
-            raise CacheConnectionError(f"set_contains_many failed: {e}")
+            raise CacheConnectionError(f"set_contains_many failed: {e}") from e
 
     def hash_set(self, key: str, field: str, value: str) -> None:
         """Set a field in a Redis hash."""
         try:
             self._redis_client.hset(key, field, value)
         except redis.RedisError as e:
-            raise CacheConnectionError(f"hash_set failed: {e}")
+            raise CacheConnectionError(f"hash_set failed: {e}") from e
 
     def hash_set_many(self, key: str, mapping: dict[str, str]) -> None:
         """Set multiple fields in a Redis hash in one pipeline round-trip."""
@@ -129,28 +128,40 @@ class RedisCache(CacheServiceInterface):
                     pipe.hset(key, field, value)
                 pipe.execute()
         except redis.RedisError as e:
-            raise CacheConnectionError(f"hash_set_many failed: {e}")
+            raise CacheConnectionError(f"hash_set_many failed: {e}") from e
 
     def hash_get(self, key: str, field: str) -> str | None:
         """Get a field from a Redis hash. Returns None if missing."""
         try:
-            result = self._redis_client.hget(key, field)
-            if result is None:
-                return None
-            return result.decode() if isinstance(result, bytes) else result  # type: ignore[union-attr]
+            return self._redis_client.hget(key, field)  # type: ignore[return-value]
         except redis.RedisError as e:
-            raise CacheConnectionError(f"hash_get failed: {e}")
+            raise CacheConnectionError(f"hash_get failed: {e}") from e
+
+    def expire(self, key: str, seconds: int) -> None:
+        """Set a TTL on an existing key. No-op if the key does not exist."""
+        try:
+            self._redis_client.expire(key, seconds)
+        except redis.RedisError as e:
+            raise CacheConnectionError(f"expire failed: {e}") from e
 
     def clear_pattern(self, pattern: str) -> int:
-        """Clear all keys matching a pattern."""
+        """Clear all keys matching a pattern using SCAN to avoid blocking Redis."""
         try:
-            keys = self._redis_client.keys(pattern)
-            if keys:
-                return self._redis_client.delete(*keys)  # type: ignore[return-value,arg-type]
-            return 0
+            deleted = 0
+            cursor = 0
+            while True:
+                cursor, keys = cast(tuple[int, list[Any]], self._redis_client.scan(cursor, match=pattern, count=100))
+                if keys:
+                    deleted += self._redis_client.delete(*keys)  # type: ignore[arg-type]
+                if cursor == 0:
+                    break
+            return deleted
         except redis.RedisError as e:
-            logger.error(f"Failed to clear keys with pattern {pattern}: {e}")
-            raise CacheConnectionError(f"Cache pattern clear failed: {e}")
+            logger.error(
+                "cache_clear_pattern_failed",
+                extra={"pattern": pattern, "error": str(e)},
+            )
+            raise CacheConnectionError(f"Cache pattern clear failed: {e}") from e
 
 
 def get_redis_connection(redis_url: str) -> redis.Redis:
@@ -159,5 +170,5 @@ def get_redis_connection(redis_url: str) -> redis.Redis:
         pool = redis.ConnectionPool.from_url(redis_url, decode_responses=True)
         return redis.Redis(connection_pool=pool)
     except redis.RedisError as e:
-        logger.error(f"Failed to create Redis connection: {e}")
-        raise CacheConnectionError(f"Redis connection failed: {e}")
+        logger.error("redis_connection_failed", extra={"error": str(e)})
+        raise CacheConnectionError(f"Redis connection failed: {e}") from e

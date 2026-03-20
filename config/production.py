@@ -15,7 +15,7 @@ class ProductionConfig(BaseConfig):
 
     # Production pathfinding limits
     MAX_SEARCH_DEPTH = 6
-    BFS_BATCH_SIZE = 50
+    BFS_BATCH_SIZE = 20
 
     # Production task timeouts
     CELERY_TASK_SOFT_TIME_LIMIT = 300  # 5 minutes

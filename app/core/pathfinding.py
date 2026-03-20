@@ -10,6 +10,18 @@ from app.core.interfaces import (
     QueueInterface,
     WikipediaClientInterface,
 )
+from app.utils.constants import (
+    BFS_BWD_PARENT_PREFIX,
+    BFS_BWD_QUEUE_PREFIX,
+    BFS_BWD_VISITED_PREFIX,
+    BFS_FWD_PARENT_PREFIX,
+    BFS_FWD_QUEUE_PREFIX,
+    BFS_FWD_VISITED_PREFIX,
+    BFS_PARENT_PREFIX,
+    BFS_QUEUE_PREFIX,
+    BFS_STATE_KEY_TTL,
+    BFS_VISITED_PREFIX,
+)
 from app.utils.exceptions import (
     CacheConnectionError,
     InvalidPageError,
@@ -33,7 +45,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         cache_service: CacheServiceInterface,
         queue_service: QueueInterface,
         max_depth: int = 6,
-        batch_size: int = 50,
+        batch_size: int = 20,
         progress_callback: Callable | None = None,
     ):
         self.wikipedia_client = wikipedia_client
@@ -67,9 +79,9 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
 
         # Generate unique session ID for this search
         session_id = str(uuid.uuid4())
-        queue_key = f"bfs_queue:{session_id}"
-        visited_key = f"bfs_visited:{session_id}"
-        parent_key = f"bfs_parent:{session_id}"
+        queue_key = f"{BFS_QUEUE_PREFIX}:{session_id}"
+        visited_key = f"{BFS_VISITED_PREFIX}:{session_id}"
+        parent_key = f"{BFS_PARENT_PREFIX}:{session_id}"
 
         try:
             return self._perform_bfs_search(
@@ -94,12 +106,20 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         in a single bulk Wikipedia API call per batch, minimising round-trips.
         """
         logger.info(
-            f"Starting Redis-based BFS from '{start_page}' to '{end_page}' (session: {session_id})"
+            "bfs_started",
+            extra={
+                "start_page": start_page,
+                "end_page": end_page,
+                "session_id": session_id,
+            },
         )
 
         # Initialize search state
         self.queue_service.push(queue_key, {"page": start_page, "depth": 0})
         self.cache_service.set_add(visited_key, start_page)
+        # Safety-net TTLs: keys self-expire if the cleanup finally block fails
+        self.queue_service.expire(queue_key, BFS_STATE_KEY_TTL)
+        self.cache_service.expire(visited_key, BFS_STATE_KEY_TTL)
 
         nodes_explored = 0
         nodes_lock = threading.Lock()
@@ -115,9 +135,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
 
             # BFS guarantees monotonically increasing depth — check on first item
             if current_depth > self.max_depth:
-                logger.warning(
-                    f"Reached maximum depth {self.max_depth}, stopping search"
-                )
+                logger.warning("max_depth_reached", extra={"max_depth": self.max_depth})
                 break
 
             # Build a per-page callback fired inside the thread pool as each
@@ -127,9 +145,8 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             # nodes_lock guards nodes_explored against concurrent increments.
             #
             # _depth captures current_depth by value (avoids ruff B023: loop
-            # variable capture).  if/else lets basedpyright infer the correct
-            # Callable | None union without a redundant pre-declaration.
-            # Pre-declare so basedpyright knows the union type across both branches.
+            # variable capture).  Pre-declare so basedpyright knows the union
+            # type across both branches of the if/else below.
             on_page_fetched: Callable[[str, list[str]], None] | None = None
             if self.progress_callback:
 
@@ -137,7 +154,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                     title: str,
                     _links: list[str],
                     *,
-                    _d: int = current_depth,  # default arg binds value at def time (B023)
+                    _d: int = current_depth,
                 ) -> None:
                     nonlocal nodes_explored
                     with nodes_lock:
@@ -163,7 +180,8 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             # Bulk-fetch links for all pages in the batch (parallel API calls)
             page_names = [item["page"] for item in batch_items]
             logger.info(
-                f"Fetching links for batch of {len(page_names)} pages at depth {current_depth}"
+                "fetching_batch",
+                extra={"batch_size": len(page_names), "depth": current_depth},
             )
             try:
                 links_bulk = self.wikipedia_client.get_links_bulk(
@@ -175,7 +193,8 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                     nodes_explored += len(batch_items)
             except Exception as e:
                 logger.error(
-                    f"Failed to get links for batch at depth {current_depth}: {e}"
+                    "batch_links_failed",
+                    extra={"depth": current_depth, "error": str(e)},
                 )
                 if isinstance(e, WikipediaAPIError | CacheConnectionError):
                     raise
@@ -185,14 +204,21 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             for item in batch_items:
                 current_page = item["page"]
                 links = links_bulk.get(current_page, [])
-                logger.info(f"Found {len(links)} links from '{current_page}'")
+                logger.info(
+                    "page_links_fetched",
+                    extra={"page": current_page, "link_count": len(links)},
+                )
 
                 for link in links:
                     if link == end_page:
                         self.cache_service.hash_set(parent_key, link, current_page)
                         final_path = self._reconstruct_path(end_page, parent_key)
                         logger.info(
-                            f"Path found! Length: {len(final_path)}, explored {nodes_explored} nodes"
+                            "path_found",
+                            extra={
+                                "path_length": len(final_path),
+                                "nodes_explored": nodes_explored,
+                            },
                         )
                         return {"path": final_path, "nodes_explored": nodes_explored}
 
@@ -205,7 +231,9 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                             queue_key, {"page": link, "depth": item["depth"] + 1}
                         )
                     except Exception as e:
-                        logger.error(f"Redis operation failed for {link}: {e}")
+                        logger.error(
+                            "redis_op_failed", extra={"link": link, "error": str(e)}
+                        )
                         if isinstance(e, CacheConnectionError):
                             raise
                         continue
@@ -231,10 +259,16 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                     )
 
             logger.info(
-                f"Processed batch of {len(batch_items)} pages, queue length: {self.queue_service.length(queue_key)}"
+                "batch_processed",
+                extra={
+                    "batch_size": len(batch_items),
+                    "queue_length": self.queue_service.length(queue_key),
+                },
             )
 
-        logger.warning(f"No path found from '{start_page}' to '{end_page}'")
+        logger.warning(
+            "path_not_found", extra={"start_page": start_page, "end_page": end_page}
+        )
         raise PathNotFoundError(start_page, end_page)
 
     def _reconstruct_path(self, node: str, parent_hash_key: str) -> list[str]:
@@ -256,7 +290,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             self.cache_service.delete_many([queue_key, visited_key, parent_key])
             logger.info("Search state cleanup completed")
         except Exception as e:
-            logger.error(f"Failed to cleanup search state: {e}")
+            logger.error("search_cleanup_failed", extra={"error": str(e)})
 
 
 class BidirProgressAggregator:
@@ -281,14 +315,19 @@ class BidirProgressAggregator:
         self._bwd_q = bwd_q
         self._fwd_nodes = 0
         self._bwd_nodes = 0
+        self._fwd_depth = 0
+        self._bwd_depth = 0
+        self._start_time = time.time()
         self._lock = threading.Lock()
 
     def record(self, title: str, depth: int, direction: str) -> None:
         with self._lock:
             if direction == "forward":
                 self._fwd_nodes += 1
+                self._fwd_depth = max(self._fwd_depth, depth)
             else:
                 self._bwd_nodes += 1
+                self._bwd_depth = max(self._bwd_depth, depth)
             combined_queue = self._queue_service.length(
                 self._fwd_q
             ) + self._queue_service.length(self._bwd_q)
@@ -296,9 +335,10 @@ class BidirProgressAggregator:
                 {
                     "nodes_explored": self._fwd_nodes + self._bwd_nodes,
                     "queue_size": combined_queue,
-                    "current_depth": depth,
+                    "current_depth": self._fwd_depth + self._bwd_depth,
                     "last_node": title,
                     "direction": direction,
+                    "search_time_elapsed": round(time.time() - self._start_time, 2),
                 }
             )
 
@@ -321,7 +361,7 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
         cache_service: CacheServiceInterface,
         queue_service: QueueInterface,
         max_depth: int = 6,
-        batch_size: int = 50,
+        batch_size: int = 20,
         progress_callback: Callable | None = None,
     ):
         self.wikipedia_client = wikipedia_client
@@ -350,12 +390,12 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
 
         sid = str(uuid.uuid4())[:8]
 
-        fwd_q = f"bfs_fwd_queue:{sid}"
-        bwd_q = f"bfs_bwd_queue:{sid}"
-        fwd_vis = f"bfs_fwd_visited:{sid}"
-        bwd_vis = f"bfs_bwd_visited:{sid}"
-        fwd_par = f"bfs_fwd_parent:{sid}"
-        bwd_par = f"bfs_bwd_parent:{sid}"
+        fwd_q = f"{BFS_FWD_QUEUE_PREFIX}:{sid}"
+        bwd_q = f"{BFS_BWD_QUEUE_PREFIX}:{sid}"
+        fwd_vis = f"{BFS_FWD_VISITED_PREFIX}:{sid}"
+        bwd_vis = f"{BFS_BWD_VISITED_PREFIX}:{sid}"
+        fwd_par = f"{BFS_FWD_PARENT_PREFIX}:{sid}"
+        bwd_par = f"{BFS_BWD_PARENT_PREFIX}:{sid}"
 
         keys = [fwd_q, bwd_q, fwd_vis, bwd_vis, fwd_par, bwd_par]
 
@@ -372,6 +412,11 @@ class BidirectionalBFSPathFinder(PathFinderInterface):
             self.cache_service.set_add(bwd_vis, end_page)
             self.queue_service.push(fwd_q, {"page": start_page, "depth": 0})
             self.queue_service.push(bwd_q, {"page": end_page, "depth": 0})
+            # Safety-net TTLs: keys self-expire if the cleanup finally block fails
+            self.cache_service.expire(fwd_vis, BFS_STATE_KEY_TTL)
+            self.cache_service.expire(bwd_vis, BFS_STATE_KEY_TTL)
+            self.queue_service.expire(fwd_q, BFS_STATE_KEY_TTL)
+            self.queue_service.expire(bwd_q, BFS_STATE_KEY_TTL)
 
             fwd_max = (self.max_depth + 1) // 2
             bwd_max = self.max_depth // 2

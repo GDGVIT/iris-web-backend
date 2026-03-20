@@ -5,6 +5,7 @@ import pytest
 import requests
 
 from app.external.wikipedia import WikipediaClient
+from app.utils.exceptions import WikipediaAPIError
 
 
 class DummyResponse:
@@ -165,8 +166,6 @@ def test_fetch_single_page_success_and_error():
     assert result["Python"] == ["Guido van Rossum", "List of Python topics"]
 
     # Request error raises WikipediaAPIError
-    from app.utils.exceptions import WikipediaAPIError
-
     session.set_response({}, raise_exc=requests.RequestException("timeout"))
     with pytest.raises(WikipediaAPIError):
         client._fetch_single_page("Python")

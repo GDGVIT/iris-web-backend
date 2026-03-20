@@ -1,8 +1,10 @@
 import json as pyjson
+import logging
 import os
 
 import pytest
 from flask import Flask, jsonify
+from marshmallow import ValidationError
 
 from app.api import middleware as mw
 from app.utils.exceptions import (
@@ -33,8 +35,6 @@ def make_request_context(app, method="GET", json=None, headers=None, data=None):
 def test_handle_validation_and_application_errors(flask_app):
     @mw.handle_validation_errors
     def fn_val():
-        from marshmallow import ValidationError
-
         raise ValidationError({"f": ["bad"]})
 
     @mw.handle_application_errors
@@ -108,9 +108,11 @@ def test_log_requests_and_require_json(flask_app):
         resp, code = ok_handler()
         assert code == 201 and resp["ok"] is True
 
-    with pytest.raises(ValueError):
-        with make_request_context(flask_app, method="POST", json={"a": 1}):
-            err_handler()
+    with (
+        pytest.raises(ValueError),
+        make_request_context(flask_app, method="POST", json={"a": 1}),
+    ):
+        err_handler()
 
     with make_request_context(flask_app, method="POST", headers={}):
         resp, code = requires_json()
@@ -180,8 +182,9 @@ def test_configure_logging_writes_file_handler(tmp_path):
     os.environ["LOG_DIR"] = str(log_dir)
     configure_logging(app)
 
-    # File handler should be added when not debug/testing
+    # File handler is added to the root logger (not app.logger directly)
     has_file_handler = any(
-        h.__class__.__name__ == "RotatingFileHandler" for h in app.logger.handlers
+        h.__class__.__name__ == "RotatingFileHandler"
+        for h in logging.getLogger().handlers
     )
     assert has_file_handler is True

@@ -6,6 +6,11 @@ from typing import Any
 from flask import jsonify, request
 from marshmallow import ValidationError
 
+from app.utils.constants import (
+    ERROR_INTERNAL_ERROR,
+    ERROR_INVALID_PAGE,
+    ERROR_PATH_NOT_FOUND,
+)
 from app.utils.exceptions import (
     CacheConnectionError,
     InvalidPageError,
@@ -27,6 +32,7 @@ def handle_validation_errors(f: Callable[..., Any]) -> Callable[..., Any]:
         try:
             return f(*args, **kwargs)
         except ValidationError as e:
+            logger.warning("validation_error", extra={"details": e.messages})
             error_response = {
                 "error": True,
                 "message": "Invalid request data",
@@ -46,16 +52,23 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
         try:
             return f(*args, **kwargs)
         except PathNotFoundError as e:
+            logger.error("path_not_found", extra={"error": str(e)})
             error_response = {
                 "error": True,
                 "message": str(e),
-                "code": "PATH_NOT_FOUND",
+                "code": ERROR_PATH_NOT_FOUND,
             }
             return jsonify(error_response), 404
         except InvalidPageError as e:
-            error_response = {"error": True, "message": str(e), "code": "INVALID_PAGE"}
+            logger.warning("invalid_page", extra={"error": str(e)})
+            error_response = {
+                "error": True,
+                "message": str(e),
+                "code": ERROR_INVALID_PAGE,
+            }
             return jsonify(error_response), 400
         except WikipediaPageNotFoundError as e:
+            logger.warning("wikipedia_page_not_found", extra={"error": str(e)})
             error_response = {
                 "error": True,
                 "message": str(e),
@@ -63,17 +76,19 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
             }
             return jsonify(error_response), 404
         except CacheConnectionError as e:
+            logger.error("cache_error", extra={"error": str(e)})
             error_response = {
                 "error": True,
                 "message": "Cache service unavailable",
                 "code": "CACHE_ERROR",
             }
-            logger.error(f"Cache error: {e}")
             return jsonify(error_response), 503
         except TaskError as e:
+            logger.error("task_error", extra={"error": str(e)})
             error_response = {"error": True, "message": str(e), "code": "TASK_ERROR"}
             return jsonify(error_response), 500
         except IrisBaseException as e:
+            logger.error("application_error", extra={"error": str(e)})
             error_response = {
                 "error": True,
                 "message": str(e),
@@ -84,9 +99,9 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
             error_response = {
                 "error": True,
                 "message": "Internal server error",
-                "code": "INTERNAL_ERROR",
+                "code": ERROR_INTERNAL_ERROR,
             }
-            logger.error(f"Unexpected error: {e}", exc_info=True)
+            logger.error("unexpected_error", extra={"error": str(e)}, exc_info=True)
             return jsonify(error_response), 500
 
     return decorated_function
@@ -99,28 +114,25 @@ def log_requests(f: Callable[..., Any]) -> Callable[..., Any]:
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         start_time = time.time()
 
-        # Log request
-        logger.info(
-            f"API Request: {request.method} {request.path} from {request.remote_addr}"
-        )
+        logger.info("request_started")
+
         if request.is_json and request.get_json():
-            logger.debug(f"Request data: {request.get_json()}")
+            logger.debug("request_body", extra={"body": request.get_json()})
 
         try:
             response = f(*args, **kwargs)
-            duration = time.time() - start_time
-
-            # Log response
+            duration_ms = round((time.time() - start_time) * 1000, 2)
             status_code = response[1] if isinstance(response, tuple) else 200
             logger.info(
-                f"API Response: {request.method} {request.path} - {status_code} ({duration:.3f}s)"
+                "request_completed",
+                extra={"http_status": status_code, "duration_ms": duration_ms},
             )
-
             return response
         except Exception as e:
-            duration = time.time() - start_time
+            duration_ms = round((time.time() - start_time) * 1000, 2)
             logger.error(
-                f"API Error: {request.method} {request.path} - Error ({duration:.3f}s): {e}"
+                "request_failed",
+                extra={"duration_ms": duration_ms, "error": str(e)},
             )
             raise
 
@@ -159,7 +171,8 @@ def rate_limit(max_requests_per_hour=100):
             # For now, just log the request and continue
             client_ip = request.remote_addr
             logger.debug(
-                f"Rate limit check for {client_ip} (limit: {max_requests_per_hour}/hour)"
+                f"Rate limit check for {client_ip} "
+                f"(limit: {max_requests_per_hour}/hour)"
             )
             return f(*args, **kwargs)
 

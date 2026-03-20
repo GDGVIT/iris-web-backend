@@ -1,7 +1,9 @@
 // Use current domain for API calls (works for both localhost and deployed domains)
 const API_BASE = window.location.origin;
 let currentTaskId = null;
-let pollingInterval = null;
+let pollTimeoutId = null;
+let abortController = null;
+let taskStartTime = null;
 let graph = null;
 
 // State management
@@ -66,6 +68,17 @@ class PathFinderUI {
         document.getElementById('endPage').addEventListener('input', () => {
             this.saveCurrentState();
             this.updateButtonState();
+        });
+
+        // Keyboard activation for "Currently Exploring" node link
+        document.getElementById('lastNode').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                const el = document.getElementById('lastNode');
+                if (!el.classList.contains('disabled')) {
+                    e.preventDefault();
+                    openWikipediaPage(el.textContent);
+                }
+            }
         });
     }
 
@@ -145,25 +158,37 @@ class PathFinderUI {
     }
 
     clearActiveTask() {
-        // Stop any ongoing polling
-        if (pollingInterval) {
-            clearInterval(pollingInterval);
-            pollingInterval = null;
+        // Cancel pending poll timeout
+        if (pollTimeoutId) {
+            clearTimeout(pollTimeoutId);
+            pollTimeoutId = null;
         }
-        
-        // Clear current task ID
+
+        // Abort any in-flight fetch requests
+        if (abortController) {
+            abortController.abort();
+            abortController = null;
+        }
+
+        // Clear current task ID and start time
         currentTaskId = null;
-        
+        taskStartTime = null;
+
         // Update button state
         this.updateButtonState();
     }
 
     showLoading() {
-        document.getElementById('findPathBtn').disabled = true;
+        // Swap find path → cancel
+        document.getElementById('findPathBtn').classList.add('hidden');
+        document.getElementById('cancelBtn').classList.remove('hidden');
         document.getElementById('error').classList.add('hidden');
     }
 
     hideLoading() {
+        // Swap cancel → find path
+        document.getElementById('cancelBtn').classList.add('hidden');
+        document.getElementById('findPathBtn').classList.remove('hidden');
         // Use updateButtonState instead of directly enabling
         this.updateButtonState();
     }
@@ -215,9 +240,10 @@ class PathFinderUI {
         const lastNodeEl = document.getElementById('lastNode');
         lastNodeEl.textContent = '-';
         lastNodeEl.classList.add('disabled');
+        lastNodeEl.setAttribute('tabindex', '-1');
 
         // Reset depth
-        this.updateDepthIndicator(0, 6);
+        this.updateDepthIndicator(0, 10);
     }
 
     updateProgressDisplay(progressData) {
@@ -239,15 +265,17 @@ class PathFinderUI {
             stats.nodes_explored?.toLocaleString() || '0';
         document.getElementById('queueSize').textContent = 
             stats.queue_size?.toLocaleString() || '0';
-        document.getElementById('elapsedTime').textContent = 
+        document.getElementById('elapsedTime').textContent =
             `${progressData.search_time_elapsed || 0}s`;
         const lastNodeEl = document.getElementById('lastNode');
         const ln = stats.last_node || '-';
         lastNodeEl.textContent = ln;
         if (ln && ln !== '-') {
             lastNodeEl.classList.remove('disabled');
+            lastNodeEl.setAttribute('tabindex', '0');
         } else {
             lastNodeEl.classList.add('disabled');
+            lastNodeEl.setAttribute('tabindex', '-1');
         }
     }
 
@@ -313,9 +341,12 @@ class PathFinderUI {
             this.showLoading();
             this.hidePathDisplay();
             this.showVisualizationSection();
-            
+
             // Update search path header immediately with actual pages
             document.getElementById('searchPath').textContent = `${startPage} → ${endPage}`;
+
+            // Create a new AbortController for this request chain
+            abortController = new AbortController();
 
             const response = await fetch(`${API_BASE}/getPath`, {
                 method: 'POST',
@@ -326,16 +357,22 @@ class PathFinderUI {
                     start: startPage,
                     end: endPage,
                     algorithm: "bidirectional"
-                })
+                }),
+                signal: abortController.signal
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || `HTTP ${response.status}`);
+                let message = `HTTP ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    message = errorData.message || message;
+                } catch { /* non-JSON response */ }
+                throw new Error(message);
             }
 
             const data = await response.json();
             currentTaskId = data.task_id;
+            taskStartTime = Date.now();
 
             // Save task ID to state for recovery
             this.saveCurrentState();
@@ -343,23 +380,47 @@ class PathFinderUI {
             this.pollTaskStatus();
 
         } catch (error) {
+            if (error.name === 'AbortError') return;
             const section = document.getElementById('visualizationSection');
             section.classList.remove('show');
             this.showError(`Failed to start pathfinding: ${error.message}`);
         }
     }
 
-    async pollTaskStatus() {
-        if (!currentTaskId) return;
+    async pollTaskStatus(pollErrors = 0) {
+        // Capture the task ID this poll chain belongs to.
+        // After every await we check whether it still matches the global
+        // currentTaskId — if not, a cancel or new search happened and
+        // this chain must die silently.
+        const taskId = currentTaskId;
+        if (!taskId) return;
+
+        // Match server hard limit (CELERY_TASK_TIME_LIMIT = 600s)
+        const MAX_TASK_POLL_MS = 600_000;
+        if (taskStartTime && Date.now() - taskStartTime > MAX_TASK_POLL_MS) {
+            this.clearActiveTask();
+            this.hideLoading();
+            document.getElementById('visualizationSection').classList.remove('show');
+            this.showError('Search timed out. Please try again.');
+            StateManager.clear();
+            return;
+        }
+
+        const MAX_POLL_ERRORS = 5;
 
         try {
-            const response = await fetch(`${API_BASE}/tasks/status/${currentTaskId}`);
+            const response = await fetch(`${API_BASE}/tasks/status/${currentTaskId}`, {
+                signal: abortController?.signal
+            });
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
+
+            // Check again after parsing
+            if (currentTaskId !== taskId) return;
 
             switch (data.status) {
                 case 'PENDING':
@@ -368,7 +429,7 @@ class PathFinderUI {
                     // Show zeroed stats while we wait
                     this.resetProgressUI();
                     // Header already shows start→end; stats will populate on first update
-                    setTimeout(() => this.pollTaskStatus(), 1000);
+                    pollTimeoutId = setTimeout(() => this.pollTaskStatus(), 1000);
                     break;
 
                 case 'IN_PROGRESS':
@@ -377,7 +438,7 @@ class PathFinderUI {
                     if (data.progress) {
                         this.updateProgressDisplay(data.progress);
                     }
-                    setTimeout(() => this.pollTaskStatus(), 1000);
+                    pollTimeoutId = setTimeout(() => this.pollTaskStatus(), 1000);
                     break;
 
                 case 'SUCCESS':
@@ -410,11 +471,24 @@ class PathFinderUI {
             }
 
         } catch (error) {
+            if (error.name === 'AbortError') return;
+
+            // Stale chain — don't clobber the new search's UI
+            if (currentTaskId !== taskId) return;
+
+            const nextErrors = pollErrors + 1;
+            if (nextErrors < MAX_POLL_ERRORS) {
+                // Transient failure (timeout, network blip) — retry with back-off
+                pollTimeoutId = setTimeout(() => this.pollTaskStatus(nextErrors), 2000);
+                return;
+            }
+
+            // Too many consecutive failures — give up
             this.clearActiveTask();
             this.hideLoading();
             const section = document.getElementById('visualizationSection');
             section.classList.remove('show');
-            this.showError(`Failed to check task status: ${error.message}`);
+            this.showError(`Lost connection to server. Please try again.`);
             StateManager.clear();
         }
     }
@@ -425,15 +499,16 @@ class PathFinderUI {
         if (!result.path || result.path.length === 0) {
             // Check if this is actually a nested error response
             if (result.status === 'FAILURE' && result.error) {
-                // Show the specific error message from the nested result
+                this.clearActiveTask();
                 const section = document.getElementById('visualizationSection');
                 section.classList.remove('show');
                 this.showError(result.error);
                 StateManager.clear();
                 return;
             }
-            
+
             // Fallback to generic message for actual empty paths
+            this.clearActiveTask();
             const section = document.getElementById('visualizationSection');
             section.classList.remove('show');
             this.showError('No path found between the pages');
@@ -504,14 +579,18 @@ class PathFinderUI {
         graph.width = width;
         graph.height = calculatedHeight;
 
-        // Set SVG dimensions properly  
+        // Set SVG dimensions and accessible label
+        const pathDescription = nodes.map(n => n.name).join(' → ');
         svg
             .attr('width', width)
             .attr('height', calculatedHeight)
             .attr('viewBox', `0 0 ${width} ${calculatedHeight}`)
+            .attr('aria-label', `Path visualization: ${pathDescription}`)
             .style('display', 'block');
 
-        // Add arrow marker for directed edges
+        // Add arrow marker for directed edges — color read from CSS token at render time
+        const accentBlue = getComputedStyle(document.documentElement)
+            .getPropertyValue('--accent-blue').trim() || '#58A6FF';
         const defs = svg.append('defs');
         defs.append('marker')
             .attr('id', 'arrowhead')
@@ -523,7 +602,7 @@ class PathFinderUI {
             .attr('orient', 'auto')
             .append('path')
             .attr('d', 'M0,-5L10,0L0,5')
-            .attr('fill', '#58A6FF');
+            .attr('fill', accentBlue);
 
         // Create main group
         const g = svg.append('g');
@@ -559,7 +638,7 @@ class PathFinderUI {
                 if (isTouch) return;
                 this.tooltip
                     .style('opacity', 1)
-                    .html(`${d.name}<br/>Step ${d.index + 1}`)
+                    .text(`${d.name} — Step ${d.index + 1}`)
                     .style('left', (event.pageX + 10) + 'px')
                     .style('top', (event.pageY - 10) + 'px');
             })
@@ -737,9 +816,17 @@ class PathFinderUI {
         path.forEach((page, index) => {
             const stepDiv = document.createElement('div');
             stepDiv.className = 'path-step';
-            stepDiv.onclick = () => {
-                window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(page)}`, '_blank');
-            };
+            stepDiv.setAttribute('role', 'button');
+            stepDiv.setAttribute('tabindex', '0');
+            stepDiv.setAttribute('aria-label', `Step ${index + 1}: Open ${page} on Wikipedia`);
+            const openPage = () => window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(page)}`, '_blank');
+            stepDiv.onclick = openPage;
+            stepDiv.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openPage();
+                }
+            });
 
             const stepNumber = document.createElement('div');
             stepNumber.className = 'step-number';
@@ -757,9 +844,32 @@ class PathFinderUI {
         pathStepsContainer.classList.remove('hidden');
     }
 
+    async cancelSearch() {
+        if (!currentTaskId) return;
+
+        const taskId = currentTaskId;
+        this.clearActiveTask();
+
+        // Hide UI and show message immediately (synchronous, before any await)
+        document.getElementById('visualizationSection').classList.remove('show');
+        this.showError('Search cancelled.');
+        StateManager.clear();
+
+        // Fire-and-forget the backend cancel — don't let its resolution
+        // clobber state if the user already started a new search.
+        try {
+            await fetch(`${API_BASE}/tasks/${taskId}`, { method: 'DELETE' });
+        } catch (e) {
+            // Best-effort cancel; task may already be done
+        }
+    }
+
     clearVisualization() {
         // Clear active task if any
         this.clearActiveTask();
+
+        // Ensure cancel button is hidden and find path button is shown
+        this.hideLoading();
 
         // Clear stored state
         StateManager.clear();
@@ -796,6 +906,12 @@ let pathFinderUI;
 function findPath() {
     if (pathFinderUI) {
         pathFinderUI.findPath();
+    }
+}
+
+function cancelSearch() {
+    if (pathFinderUI) {
+        pathFinderUI.cancelSearch();
     }
 }
 

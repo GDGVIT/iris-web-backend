@@ -5,6 +5,7 @@ import pytest
 
 from app import create_app
 from app.core.factory import ServiceFactory
+from app.utils.exceptions import PathNotFoundError
 from config.testing import TestingConfig
 
 
@@ -39,6 +40,7 @@ def mock_redis():
     mock_redis.rpush.return_value = 1
     mock_redis.llen.return_value = 0
     mock_redis.keys.return_value = []
+    mock_redis.scan.return_value = (0, [])
 
     # Pipeline: return a mock that supports context manager and execute()
     class _MockPipeline:
@@ -221,7 +223,7 @@ def mock_queue_service():
 def mock_celery_task():
     """Mock Celery task for testing."""
     mock_task = Mock()
-    mock_task.id = "test-task-id-123"
+    mock_task.id = "550e8400-e29b-41d4-a716-446655440000"
     mock_task.state = "PENDING"
     mock_task.result = None
     mock_task.info = None
@@ -292,8 +294,6 @@ def mock_failed_pathfinding():
     """Mock failed pathfinding operation."""
 
     def mock_find_path(start, end):
-        from app.utils.exceptions import PathNotFoundError
-
         raise PathNotFoundError(start, end)
 
     return mock_find_path

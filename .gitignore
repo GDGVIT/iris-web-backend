@@ -1,15 +1,45 @@
 # Created by .ignore support plugin (hsz.mobi)
 .idea
+.vscode
+
+# Python
 __pycache__/
-env
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build / dist
+dist/
+build/
+*.egg-info/
+
+# Databases
 *.db
 *.db-journal
-.vscode
-feasibility.txt
-nx.html
+
+# Env files
 .env
+.env.*
+
+# macOS
+.DS_Store
+
+# Claude / project-local
 .claude
 CLAUDE.md
-.pytest_cache
-.DS_Store
-.coverage
+
+# Misc
+feasibility.txt
+nx.html
+.zed
+*.log

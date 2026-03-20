@@ -26,6 +26,3 @@ class TestingConfig(BaseConfig):
 
     # No rate limiting in tests
     API_RATE_LIMIT = "10000 per hour"
-
-    # Disable external API calls in some tests
-    MOCK_WIKIPEDIA_API = True
