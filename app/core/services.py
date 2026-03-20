@@ -148,8 +148,8 @@ class PathFindingService:
             self.wikipedia_client.get_page_with_redirect_info(end_page) or _default
         )
 
-        start_exists = start_info.get("exists", False)
-        end_exists = end_info.get("exists", False)
+        start_exists = bool(start_info.get("exists", False))
+        end_exists = bool(end_info.get("exists", False))
 
         validation_details = {
             "start_page": {
@@ -170,7 +170,8 @@ class PathFindingService:
 
         # Check if end page is disambiguation - this should fail
         if end_exists and end_info.get("is_disambiguation", False):
-            final_title = end_info.get("final_title", end_page)
+            raw_title = end_info.get("final_title")
+            final_title: str = raw_title if isinstance(raw_title, str) else end_page
             raise DisambiguationPageError(end_page, final_title)
 
         # Note: We allow start page to be disambiguation as it might have useful links

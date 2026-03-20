@@ -97,7 +97,7 @@ def get_path_route():
         },
     )
 
-    task = find_path_task.delay(  # type: ignore[attr-defined]
+    task = find_path_task.delay(
         search_request.start_page, search_request.end_page, search_request.algorithm
     )
 
@@ -158,8 +158,7 @@ def get_task_status_route(task_id):
     except ValueError:
         return jsonify({"error": "Invalid task ID format"}), 404
 
-    task = find_path_task.AsyncResult(task_id)  # type: ignore[attr-defined]
-
+    task = find_path_task.AsyncResult(task_id)
     if task.state == "PENDING":
         response_data = {
             "status": "PENDING",
@@ -423,7 +422,7 @@ def cancel_task(task_id):
     terminate = request.args.get("terminate", "true").lower() != "false"
 
     # Check current state before revoking
-    task = find_path_task.AsyncResult(task_id)  # type: ignore[attr-defined]
+    task = find_path_task.AsyncResult(task_id)
     if task.state in (CELERY_STATE_SUCCESS, CELERY_STATE_FAILURE):
         return jsonify(
             {

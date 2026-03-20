@@ -29,7 +29,9 @@ It uses **bidirectional BFS** (default) which searches simultaneously from both 
 [![Redis](https://img.shields.io/badge/Redis-6-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io)
 [![Gunicorn](https://img.shields.io/badge/Gunicorn-23-499848?style=for-the-badge&logo=gunicorn&logoColor=white)](https://gunicorn.org/)
 [![D3.js](https://img.shields.io/badge/D3.js-Graph%20Viz-F9A03C?style=for-the-badge&logo=d3.js&logoColor=white)](https://d3js.org/)
+[![uv](https://img.shields.io/badge/uv-package%20manager-D7FF64?style=for-the-badge&logo=astral&logoColor=black)](https://github.com/astral-sh/uv)
 [![Ruff](https://img.shields.io/badge/Ruff-lint%20%2B%20format-D7FF64?style=for-the-badge&logo=ruff&logoColor=black)](https://github.com/astral-sh/ruff)
+[![ty](https://img.shields.io/badge/ty-type%20checker-D7FF64?style=for-the-badge&logo=astral&logoColor=black)](https://github.com/astral-sh/ty)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](./LICENSE)
 
 ## Quick Start
@@ -63,6 +65,7 @@ uv run pytest --cov=app --cov-report=term-missing    # run tests with coverage
 uv run pytest --cov=app --cov-report=html            # generate HTML coverage report (open htmlcov/index.html)
 uv run ruff format .                                 # format
 uv run ruff check .                                  # lint
+uv run ty check                                      # type check
 ```
 
 ## Contributors

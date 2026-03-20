@@ -7,7 +7,12 @@ from app.core.pathfinding import (
     BidirProgressAggregator,
     RedisBasedBFSPathFinder,
 )
-from app.utils.exceptions import InvalidPageError, PathNotFoundError
+from app.utils.exceptions import (
+    CacheConnectionError,
+    InvalidPageError,
+    PathNotFoundError,
+    WikipediaAPIError,
+)
 
 
 class TestRedisBasedBFSPathFinder:
@@ -399,8 +404,6 @@ class TestPathfindingErrorHandling:
         self, mock_wikipedia_client, mock_cache_service, mock_queue_service
     ):
         """WikipediaAPIError from get_links_bulk propagates out of find_path."""
-        from app.utils.exceptions import WikipediaAPIError
-
         mock_wikipedia_client.page_exists.return_value = True
         mock_wikipedia_client.get_links_bulk.side_effect = WikipediaAPIError(
             "API request failed"
@@ -417,8 +420,6 @@ class TestPathfindingErrorHandling:
         self, mock_wikipedia_client, mock_cache_service, mock_queue_service
     ):
         """CacheConnectionError from set_add propagates out of find_path."""
-        from app.utils.exceptions import CacheConnectionError
-
         mock_wikipedia_client.page_exists.return_value = True
         mock_cache_service.set_add.side_effect = CacheConnectionError(
             "Redis connection failed"
@@ -435,8 +436,6 @@ class TestPathfindingErrorHandling:
         self, mock_wikipedia_client, mock_cache_service, mock_queue_service
     ):
         """CacheConnectionError from queue.push propagates out of find_path."""
-        from app.utils.exceptions import CacheConnectionError
-
         mock_wikipedia_client.page_exists.return_value = True
         mock_queue_service.push.side_effect = CacheConnectionError(
             "Queue operation failed"

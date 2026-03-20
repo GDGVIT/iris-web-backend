@@ -5,6 +5,7 @@ import pytest
 
 from app import create_app
 from app.core.factory import ServiceFactory
+from app.utils.exceptions import PathNotFoundError
 from config.testing import TestingConfig
 
 
@@ -292,8 +293,6 @@ def mock_failed_pathfinding():
     """Mock failed pathfinding operation."""
 
     def mock_find_path(start, end):
-        from app.utils.exceptions import PathNotFoundError
-
         raise PathNotFoundError(start, end)
 
     return mock_find_path

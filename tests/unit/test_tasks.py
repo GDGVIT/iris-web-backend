@@ -8,11 +8,23 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from app import celery as celery_app
+from app.infrastructure.tasks import (
+    cache_cleanup_task,
+    find_path_task,
+    health_check_task,
+)
+from app.utils.exceptions import (
+    DisambiguationPageError,
+    InvalidPageError,
+    PathNotFoundError,
+    WikipediaAPIError,
+)
+
 
 @pytest.fixture(autouse=True)
 def celery_memory_backend(app):
     """Configure Celery to run tasks eagerly with in-memory backend."""
-    from app import celery as celery_app
 
     with app.app_context():
         celery_app.conf.update(
@@ -54,10 +66,8 @@ def _build_service(
 
 
 def _apply(start="A", end="B", algorithm="bfs", svc=None):
-    from app.infrastructure.tasks import find_path_task
-
     with patch("app.infrastructure.tasks.get_pathfinding_service", return_value=svc):
-        return find_path_task.apply(args=[start, end, algorithm]).result  # type: ignore[attr-defined]
+        return find_path_task.apply(args=[start, end, algorithm]).result
 
 
 class TestFindPathTask:
@@ -80,9 +90,7 @@ class TestFindPathTask:
     def test_invalid_request_same_page(self, app):
         with app.app_context():
             with patch("app.infrastructure.tasks.get_pathfinding_service") as mock_get:
-                from app.infrastructure.tasks import find_path_task
-
-                result = find_path_task.apply(args=["X", "X", "bfs"]).result  # type: ignore[attr-defined]
+                result = find_path_task.apply(args=["X", "X", "bfs"]).result
             assert result["status"] == "FAILURE"
             assert result["code"] == "INVALID_REQUEST"
             mock_get.assert_not_called()
@@ -90,9 +98,7 @@ class TestFindPathTask:
     def test_invalid_request_empty_pages(self, app):
         with app.app_context():
             with patch("app.infrastructure.tasks.get_pathfinding_service") as mock_get:
-                from app.infrastructure.tasks import find_path_task
-
-                result = find_path_task.apply(args=["", "B", "bfs"]).result  # type: ignore[attr-defined]
+                result = find_path_task.apply(args=["", "B", "bfs"]).result
             assert result["status"] == "FAILURE"
             assert result["code"] == "INVALID_REQUEST"
             mock_get.assert_not_called()
@@ -120,8 +126,6 @@ class TestFindPathTask:
 
     def test_disambiguation_from_validate(self, app):
         with app.app_context():
-            from app.utils.exceptions import DisambiguationPageError
-
             result = _apply(
                 start="Mercury",
                 end="B",
@@ -132,8 +136,6 @@ class TestFindPathTask:
 
     def test_path_not_found(self, app):
         with app.app_context():
-            from app.utils.exceptions import PathNotFoundError
-
             result = _apply(
                 svc=_build_service(find_path_raises=PathNotFoundError("A", "B"))
             )
@@ -142,8 +144,6 @@ class TestFindPathTask:
 
     def test_invalid_page_from_find_path(self, app):
         with app.app_context():
-            from app.utils.exceptions import InvalidPageError
-
             result = _apply(
                 svc=_build_service(find_path_raises=InvalidPageError("bad"))
             )
@@ -152,8 +152,6 @@ class TestFindPathTask:
 
     def test_disambiguation_from_find_path(self, app):
         with app.app_context():
-            from app.utils.exceptions import DisambiguationPageError
-
             result = _apply(
                 svc=_build_service(find_path_raises=DisambiguationPageError("Mercury"))
             )
@@ -168,16 +166,13 @@ class TestFindPathTask:
 
     def test_retryable_error_max_retries_exceeded(self, app):
         with app.app_context():
-            from app.infrastructure.tasks import find_path_task
-            from app.utils.exceptions import WikipediaAPIError
-
             svc = _build_service(find_path_raises=WikipediaAPIError("timeout"))
             with patch(
                 "app.infrastructure.tasks.get_pathfinding_service", return_value=svc
             ):
                 # Eager retries run synchronously; after max_retries the task
                 # returns the MAX_RETRIES_EXCEEDED failure dict.
-                result = find_path_task.apply(args=["A", "B", "bfs"], retries=3).result  # type: ignore[attr-defined]
+                result = find_path_task.apply(args=["A", "B", "bfs"], retries=3).result
             assert result["status"] == "FAILURE"
             assert result["code"] == "MAX_RETRIES_EXCEEDED"
 
@@ -187,10 +182,7 @@ class TestFindPathTask:
             with patch(
                 "app.infrastructure.tasks.get_pathfinding_service", return_value=svc
             ) as mock_get:
-                from app.infrastructure.tasks import find_path_task
-
-                find_path_task.apply(args=["A", "B", "bfs"])  # type: ignore[attr-defined]
-
+                find_path_task.apply(args=["A", "B", "bfs"])
             _algo, callback = mock_get.call_args[0]
             assert callable(callback)
 
@@ -205,10 +197,7 @@ class TestHealthCheckTask:
                 "app.core.factory.ServiceFactory.get_cache_service",
                 return_value=mock_cache,
             ):
-                from app.infrastructure.tasks import health_check_task
-
-                result = health_check_task.apply().result  # type: ignore[attr-defined]
-
+                result = health_check_task.apply().result
             assert result["status"] == "FAILURE"
             assert "Redis ping failed" in result["error"]
 
@@ -228,10 +217,7 @@ class TestHealthCheckTask:
                     return_value=mock_cache,
                 ),
             ):
-                from app.infrastructure.tasks import health_check_task
-
-                result = health_check_task.apply().result  # type: ignore[attr-defined]
-
+                result = health_check_task.apply().result
             assert result["status"] == "SUCCESS"
             assert result["checks"]["redis"] == "healthy"
             assert result["checks"]["cache"] == "healthy"
@@ -252,10 +238,7 @@ class TestHealthCheckTask:
                     return_value=mock_cache,
                 ),
             ):
-                from app.infrastructure.tasks import health_check_task
-
-                result = health_check_task.apply().result  # type: ignore[attr-defined]
-
+                result = health_check_task.apply().result
             assert result["status"] == "FAILURE"
 
     def test_redis_connection_failure(self, app):
@@ -264,10 +247,7 @@ class TestHealthCheckTask:
                 "app.core.factory.ServiceFactory.get_redis_client",
                 side_effect=Exception("no redis"),
             ):
-                from app.infrastructure.tasks import health_check_task
-
-                result = health_check_task.apply().result  # type: ignore[attr-defined]
-
+                result = health_check_task.apply().result
             assert result["status"] == "FAILURE"
             assert "no redis" in result["error"]
 
@@ -279,12 +259,9 @@ class TestCacheCleanupTask:
             mock_mgmt.clear_cache_pattern.return_value = 7
 
             with patch(
-                "app.core.factory.get_cache_management_service", return_value=mock_mgmt
+                "app.infrastructure.tasks.get_cache_management_service", return_value=mock_mgmt
             ):
-                from app.infrastructure.tasks import cache_cleanup_task
-
-                result = cache_cleanup_task.apply(args=["bfs_*"]).result  # type: ignore[attr-defined]
-
+                result = cache_cleanup_task.apply(args=["bfs_*"]).result
             assert result["status"] == "SUCCESS"
             assert result["cleared_count"] == 7
             assert result["pattern"] == "bfs_*"
@@ -295,24 +272,18 @@ class TestCacheCleanupTask:
             mock_mgmt.clear_cache_pattern.return_value = 0
 
             with patch(
-                "app.core.factory.get_cache_management_service", return_value=mock_mgmt
+                "app.infrastructure.tasks.get_cache_management_service", return_value=mock_mgmt
             ):
-                from app.infrastructure.tasks import cache_cleanup_task
-
-                result = cache_cleanup_task.apply().result  # type: ignore[attr-defined]
-
+                result = cache_cleanup_task.apply().result
             assert result["pattern"] == "bfs_*"
             mock_mgmt.clear_cache_pattern.assert_called_once_with("bfs_*")
 
     def test_failure(self, app):
         with app.app_context():
             with patch(
-                "app.core.factory.get_cache_management_service",
+                "app.infrastructure.tasks.get_cache_management_service",
                 side_effect=Exception("unavailable"),
             ):
-                from app.infrastructure.tasks import cache_cleanup_task
-
-                result = cache_cleanup_task.apply(args=["bfs_*"]).result  # type: ignore[attr-defined]
-
+                result = cache_cleanup_task.apply(args=["bfs_*"]).result
             assert result["status"] == "FAILURE"
             assert "unavailable" in result["error"]

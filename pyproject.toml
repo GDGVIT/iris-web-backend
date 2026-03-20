@@ -20,7 +20,7 @@ dev = [
     "pytest-cov>=6.2.1",
     "pytest-mock>=3.14.0",
     "ruff>=0.11.2",
-    "basedpyright>=1.23.0",
+    "ty>=0.0.24",
 ]
 
 [tool.ruff]
@@ -39,14 +39,6 @@ ignore = [
 quote-style = "double"
 indent-style = "space"
 
-[tool.basedpyright]
-pythonVersion = "3.13"
-venvPath = "."
-venv = ".venv"
-typeCheckingMode = "standard"
-reportMissingImports = true
-reportUnusedImport = true
-reportUnusedVariable = true
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"

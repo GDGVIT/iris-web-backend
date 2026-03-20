@@ -1,8 +1,15 @@
+from typing import TypedDict
+
 import requests
 from celery.schedules import crontab
+from flask import current_app
 
 from app import celery
-from app.core.factory import get_pathfinding_service
+from app.core.factory import (
+    ServiceFactory,
+    get_cache_management_service,
+    get_pathfinding_service,
+)
 from app.core.models import SearchRequest
 from app.utils.constants import (
     ALGORITHM_BIDIRECTIONAL,
@@ -40,6 +47,29 @@ from app.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
+class FindPathResult(TypedDict, total=False):
+    """Typed contract for find_path_task return values.
+
+    All paths guarantee: status, start_page, end_page.
+    Failure paths add: error, code.
+    Success path adds: path, length, search_time, nodes_explored, algorithm, search_stats.
+    Retry-exhaustion adds: retry_count.
+    """
+
+    status: str
+    start_page: str
+    end_page: str
+    error: str
+    code: str
+    path: list[str]
+    length: int
+    search_time: float | None
+    nodes_explored: int | None
+    algorithm: str
+    search_stats: dict
+    retry_count: int
+
+
 @celery.task(
     bind=True,
     autoretry_for=(requests.RequestException, CacheConnectionError, WikipediaAPIError),
@@ -47,7 +77,7 @@ logger = get_logger(__name__)
 )
 def find_path_task(
     self, start_page: str, end_page: str, algorithm: str = ALGORITHM_BIDIRECTIONAL
-):
+) -> FindPathResult:
     """
     Celery task for finding a path between Wikipedia pages.
 
@@ -95,6 +125,8 @@ def find_path_task(
                 "status": CELERY_STATE_FAILURE,
                 "error": "Invalid search request: start and end pages must be different and non-empty",
                 "code": ERROR_INVALID_REQUEST,
+                "start_page": start_page,
+                "end_page": end_page,
             }
 
         # Update progress
@@ -112,21 +144,19 @@ def find_path_task(
         # Create progress callback for real-time updates.
         # The pathfinder supplies whatever fields it knows; we enrich with
         # task-level context (start_page, end_page, max_depth) here.
-        from flask import current_app
-
         max_depth = current_app.config.get("MAX_SEARCH_DEPTH", 6)
 
         def progress_update(progress_data):
-            # Normalise: pathfinders may emit a flat dict or one with search_stats
             if "search_stats" not in progress_data:
                 progress_data = {
                     "status": "Searching...",
                     "search_stats": progress_data,
                     "search_time_elapsed": progress_data.get("search_time_elapsed", 0),
                 }
-            progress_data["search_stats"].setdefault("start_page", start_page)
-            progress_data["search_stats"].setdefault("end_page", end_page)
-            progress_data["search_stats"].setdefault("max_depth", max_depth)
+            search_stats: dict = progress_data["search_stats"]  # type: ignore[assignment]
+            search_stats.setdefault("start_page", start_page)
+            search_stats.setdefault("end_page", end_page)
+            search_stats.setdefault("max_depth", max_depth)
 
             self.update_state(state=CELERY_STATE_PROGRESS, meta=progress_data)
 
@@ -159,6 +189,8 @@ def find_path_task(
                 "status": CELERY_STATE_FAILURE,
                 "error": f"Start page '{start_page}' does not exist on Wikipedia",
                 "code": ERROR_PAGE_NOT_FOUND,
+                "start_page": start_page,
+                "end_page": end_page,
             }
 
         if not end_exists:
@@ -169,6 +201,8 @@ def find_path_task(
                 "status": CELERY_STATE_FAILURE,
                 "error": f"End page '{end_page}' does not exist on Wikipedia",
                 "code": ERROR_PAGE_NOT_FOUND,
+                "start_page": start_page,
+                "end_page": end_page,
             }
 
         # Update progress - starting search
@@ -193,7 +227,7 @@ def find_path_task(
         result = pathfinding_service.find_path(search_request)
 
         # Return successful result with detailed search stats
-        success_result = {
+        success_result: FindPathResult = {
             "status": CELERY_STATE_SUCCESS,
             "path": result.path,
             "length": result.length,
@@ -284,6 +318,8 @@ def find_path_task(
                 "status": CELERY_STATE_FAILURE,
                 "error": f"Max retries exceeded. Last error: {str(e)}",
                 "code": ERROR_MAX_RETRIES_EXCEEDED,
+                "start_page": start_page,
+                "end_page": end_page,
                 "retry_count": retry_count,
             }
 
@@ -298,6 +334,8 @@ def find_path_task(
             "status": CELERY_STATE_FAILURE,
             "error": f"Unexpected error: {str(e)}",
             "code": ERROR_INTERNAL_ERROR,
+            "start_page": start_page,
+            "end_page": end_page,
         }
 
 
@@ -314,8 +352,6 @@ def health_check_task(self):
 
     try:
         # Perform basic health checks
-        from app.core.factory import ServiceFactory
-
         # Test cache service (ping also validates Redis connectivity)
         cache_service = ServiceFactory.get_cache_service()
         if not cache_service.ping():
@@ -356,8 +392,6 @@ def cache_cleanup_task(self, pattern: str = BFS_CACHE_CLEANUP_PATTERN):
     logger.info("cache_cleanup_started", extra={"task_id": task_id, "pattern": pattern})
 
     try:
-        from app.core.factory import get_cache_management_service
-
         cache_service = get_cache_management_service()
         cleared_count = cache_service.clear_cache_pattern(pattern)
 

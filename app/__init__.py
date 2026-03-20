@@ -2,12 +2,18 @@ import os
 import uuid
 
 from celery import Celery
+from celery.signals import after_setup_logger, after_setup_task_logger
 from flasgger import Swagger
-from flask import Flask, g
+from flask import Flask, g, jsonify
+from marshmallow import ValidationError
 
 from app.api.swagger import SWAGGER_CONFIG, SWAGGER_TEMPLATE
 from app.utils.constants import ERROR_INTERNAL_ERROR
-from app.utils.logging import configure_logging
+from app.utils.exceptions import IrisBaseException
+from app.utils.logging import JSONFormatter, RequestContextFilter, configure_logging
+from config.development import DevelopmentConfig
+from config.production import ProductionConfig
+from config.testing import TestingConfig
 
 # Initialize Celery
 celery = Celery(__name__)
@@ -25,16 +31,10 @@ def create_app(config_class=None):
     if config_class is None:
         env = os.environ.get("FLASK_ENV", "development")
         if env == "production":
-            from config.production import ProductionConfig
-
             config_class = ProductionConfig
         elif env == "testing":
-            from config.testing import TestingConfig
-
             config_class = TestingConfig
         else:
-            from config.development import DevelopmentConfig
-
             config_class = DevelopmentConfig
 
     app.config.from_object(config_class)
@@ -75,7 +75,18 @@ def configure_celery(app):
         worker_prefetch_multiplier=app.config["CELERY_WORKER_PREFETCH_MULTIPLIER"],
         task_soft_time_limit=app.config["CELERY_TASK_SOFT_TIME_LIMIT"],
         task_time_limit=app.config["CELERY_TASK_TIME_LIMIT"],
+        # Prevent Celery from replacing our root-logger handlers on worker startup
+        worker_hijack_root_logger=False,
     )
+
+    # After Celery sets up any loggers of its own, replace their formatters with ours
+    def _apply_json_formatter(logger, **kwargs):
+        for handler in logger.handlers:
+            handler.setFormatter(JSONFormatter())
+            handler.addFilter(RequestContextFilter())
+
+    after_setup_logger.connect(_apply_json_formatter)
+    after_setup_task_logger.connect(_apply_json_formatter)
 
     # Configure task routes and periodic tasks
     from app.infrastructure.tasks import configure_periodic_tasks, configure_task_routes
@@ -104,10 +115,6 @@ def register_blueprints(app):
 
 def register_error_handlers(app):
     """Register global error handlers."""
-    from flask import jsonify
-    from marshmallow import ValidationError
-
-    from app.utils.exceptions import IrisBaseException
 
     @app.errorhandler(IrisBaseException)
     def handle_iris_exception(e):

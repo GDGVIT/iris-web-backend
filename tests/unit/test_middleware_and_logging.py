@@ -4,6 +4,7 @@ import os
 
 import pytest
 from flask import Flask, jsonify
+from marshmallow import ValidationError
 
 from app.api import middleware as mw
 from app.utils.exceptions import (
@@ -34,8 +35,6 @@ def make_request_context(app, method="GET", json=None, headers=None, data=None):
 def test_handle_validation_and_application_errors(flask_app):
     @mw.handle_validation_errors
     def fn_val():
-        from marshmallow import ValidationError
-
         raise ValidationError({"f": ["bad"]})
 
     @mw.handle_application_errors
