@@ -40,6 +40,7 @@ def mock_redis():
     mock_redis.rpush.return_value = 1
     mock_redis.llen.return_value = 0
     mock_redis.keys.return_value = []
+    mock_redis.scan.return_value = (0, [])
 
     # Pipeline: return a mock that supports context manager and execute()
     class _MockPipeline:

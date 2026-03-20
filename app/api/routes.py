@@ -156,7 +156,7 @@ def get_task_status_route(task_id):
     try:
         uuid.UUID(task_id)
     except ValueError:
-        return jsonify({"error": "Invalid task ID format"}), 404
+        return jsonify({"error": True, "message": "Invalid task ID format", "code": "INVALID_TASK_ID"}), 404
 
     task = find_path_task.AsyncResult(task_id)
     if task.state == "PENDING":
@@ -307,11 +307,12 @@ def clear_cache():
     if not any(pattern.startswith(p) for p in ALLOWED_CACHE_PREFIXES):
         return jsonify(
             {
-                "success": False,
-                "error": (
+                "error": True,
+                "message": (
                     "Pattern must start with one of: "
                     + ", ".join(ALLOWED_CACHE_PREFIXES)
                 ),
+                "code": "INVALID_CACHE_PATTERN",
             }
         ), 400
 
@@ -423,7 +424,7 @@ def cancel_task(task_id):
     try:
         uuid.UUID(task_id)
     except ValueError:
-        return jsonify({"error": "Invalid task ID format"}), 404
+        return jsonify({"error": True, "message": "Invalid task ID format", "code": "INVALID_TASK_ID"}), 404
 
     terminate = request.args.get("terminate", "true").lower() != "false"
 
@@ -432,9 +433,9 @@ def cancel_task(task_id):
     if task.state in (CELERY_STATE_SUCCESS, CELERY_STATE_FAILURE):
         return jsonify(
             {
-                "revoked": False,
-                "task_id": task_id,
-                "reason": f"Task already in terminal state: {task.state}",
+                "error": True,
+                "message": f"Task already in terminal state: {task.state}",
+                "code": "TASK_ALREADY_COMPLETE",
             }
         ), 409
 

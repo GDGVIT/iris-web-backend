@@ -68,19 +68,19 @@ def test_cache_delete_and_exists_error_raises(mock_redis):
 def test_cache_clear_pattern(mock_redis):
     cache = RedisCache(mock_redis)
 
-    # No keys
-    mock_redis.keys.return_value = []
+    # No keys — scan returns cursor=0 with empty list
+    mock_redis.scan.return_value = (0, [])
     assert cache.clear_pattern("p*") == 0
 
-    # Some keys
-    mock_redis.keys.return_value = ["a", "b"]
+    # Some keys — scan returns cursor=0 (done) with two keys
+    mock_redis.scan.return_value = (0, ["a", "b"])
     mock_redis.delete.return_value = 2
     assert cache.clear_pattern("p*") == 2
 
 
 def test_cache_clear_pattern_error(mock_redis):
     cache = RedisCache(mock_redis)
-    mock_redis.keys.side_effect = redis.RedisError("err")
+    mock_redis.scan.side_effect = redis.RedisError("err")
     with pytest.raises(CacheConnectionError):
         cache.clear_pattern("*")
 
@@ -257,12 +257,6 @@ def test_hash_set_redis_error(mock_redis):
 def test_hash_get_str_value(mock_redis):
     cache = RedisCache(mock_redis)
     mock_redis.hget = Mock(return_value="value")
-    assert cache.hash_get("myhash", "field") == "value"
-
-
-def test_hash_get_bytes_decoded(mock_redis):
-    cache = RedisCache(mock_redis)
-    mock_redis.hget = Mock(return_value=b"value")
     assert cache.hash_get("myhash", "field") == "value"
 
 

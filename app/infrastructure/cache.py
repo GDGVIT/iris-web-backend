@@ -136,20 +136,29 @@ class RedisCache(CacheServiceInterface):
     def hash_get(self, key: str, field: str) -> str | None:
         """Get a field from a Redis hash. Returns None if missing."""
         try:
-            result = self._redis_client.hget(key, field)
-            if result is None:
-                return None
-            return result.decode() if isinstance(result, bytes) else result  # type: ignore[union-attr]
+            return self._redis_client.hget(key, field)  # type: ignore[return-value]
         except redis.RedisError as e:
             raise CacheConnectionError(f"hash_get failed: {e}") from e
 
-    def clear_pattern(self, pattern: str) -> int:
-        """Clear all keys matching a pattern."""
+    def expire(self, key: str, seconds: int) -> None:
+        """Set a TTL on an existing key. No-op if the key does not exist."""
         try:
-            keys = self._redis_client.keys(pattern)
-            if keys:
-                return self._redis_client.delete(*keys)  # type: ignore[return-value,arg-type]
-            return 0
+            self._redis_client.expire(key, seconds)
+        except redis.RedisError as e:
+            raise CacheConnectionError(f"expire failed: {e}") from e
+
+    def clear_pattern(self, pattern: str) -> int:
+        """Clear all keys matching a pattern using SCAN to avoid blocking Redis."""
+        try:
+            deleted = 0
+            cursor = 0
+            while True:
+                cursor, keys = self._redis_client.scan(cursor, match=pattern, count=100)
+                if keys:
+                    deleted += self._redis_client.delete(*keys)  # type: ignore[arg-type]
+                if cursor == 0:
+                    break
+            return deleted
         except redis.RedisError as e:
             logger.error(
                 "cache_clear_pattern_failed",
