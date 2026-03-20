@@ -84,14 +84,11 @@ class RedisCache(CacheServiceInterface):
             raise CacheConnectionError(f"set_add failed: {e}") from e
 
     def set_add_many(self, key: str, values: list[str]) -> None:
-        """Add multiple values to a Redis set in one pipeline round-trip."""
+        """Add multiple values to a Redis set in a single SADD call."""
         if not values:
             return
         try:
-            with self._redis_client.pipeline() as pipe:
-                for v in values:
-                    pipe.sadd(key, v)
-                pipe.execute()
+            self._redis_client.sadd(key, *values)
         except redis.RedisError as e:
             raise CacheConnectionError(f"set_add_many failed: {e}") from e
 
