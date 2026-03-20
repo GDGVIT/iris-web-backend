@@ -62,7 +62,12 @@ def find_path_task(
     task_id = self.request.id
     logger.info(
         "pathfinding_started",
-        extra={"task_id": task_id, "start_page": start_page, "end_page": end_page, "algorithm": algorithm},
+        extra={
+            "task_id": task_id,
+            "start_page": start_page,
+            "end_page": end_page,
+            "algorithm": algorithm,
+        },
     )
 
     try:
@@ -134,7 +139,9 @@ def find_path_task(
                 start_page, end_page
             )
         except DisambiguationPageError as e:
-            logger.error("disambiguation_page_error", extra={"task_id": task_id, "error": str(e)})
+            logger.error(
+                "disambiguation_page_error", extra={"task_id": task_id, "error": str(e)}
+            )
             return {
                 "status": CELERY_STATE_FAILURE,
                 "error": str(e),
@@ -144,7 +151,10 @@ def find_path_task(
             }
 
         if not start_exists:
-            logger.error("start_page_not_found", extra={"task_id": task_id, "start_page": start_page})
+            logger.error(
+                "start_page_not_found",
+                extra={"task_id": task_id, "start_page": start_page},
+            )
             return {
                 "status": CELERY_STATE_FAILURE,
                 "error": f"Start page '{start_page}' does not exist on Wikipedia",
@@ -152,7 +162,9 @@ def find_path_task(
             }
 
         if not end_exists:
-            logger.error("end_page_not_found", extra={"task_id": task_id, "end_page": end_page})
+            logger.error(
+                "end_page_not_found", extra={"task_id": task_id, "end_page": end_page}
+            )
             return {
                 "status": CELERY_STATE_FAILURE,
                 "error": f"End page '{end_page}' does not exist on Wikipedia",
@@ -202,7 +214,11 @@ def find_path_task(
 
         logger.info(
             "pathfinding_completed",
-            extra={"task_id": task_id, "path_length": result.length, "search_time": round(result.search_time, 3)},
+            extra={
+                "task_id": task_id,
+                "path_length": result.length,
+                "search_time": round(result.search_time or 0.0, 3),
+            },
         )
         return success_result
 
@@ -227,7 +243,9 @@ def find_path_task(
         }
 
     except DisambiguationPageError as e:
-        logger.error("disambiguation_page_error", extra={"task_id": task_id, "error": str(e)})
+        logger.error(
+            "disambiguation_page_error", extra={"task_id": task_id, "error": str(e)}
+        )
         return {
             "status": CELERY_STATE_FAILURE,
             "error": str(e),
@@ -259,7 +277,9 @@ def find_path_task(
             # Re-raise to trigger Celery's retry mechanism
             raise self.retry(exc=e)
         else:
-            logger.error("max_retries_exceeded", extra={"task_id": task_id, "error": str(e)})
+            logger.error(
+                "max_retries_exceeded", extra={"task_id": task_id, "error": str(e)}
+            )
             return {
                 "status": CELERY_STATE_FAILURE,
                 "error": f"Max retries exceeded. Last error: {str(e)}",
@@ -269,7 +289,11 @@ def find_path_task(
 
     except Exception as e:
         # Unexpected errors - don't retry
-        logger.error("unexpected_error", extra={"task_id": task_id, "error": str(e)}, exc_info=True)
+        logger.error(
+            "unexpected_error",
+            extra={"task_id": task_id, "error": str(e)},
+            exc_info=True,
+        )
         return {
             "status": CELERY_STATE_FAILURE,
             "error": f"Unexpected error: {str(e)}",
@@ -337,7 +361,10 @@ def cache_cleanup_task(self, pattern: str = BFS_CACHE_CLEANUP_PATTERN):
         cache_service = get_cache_management_service()
         cleared_count = cache_service.clear_cache_pattern(pattern)
 
-        logger.info("cache_cleanup_completed", extra={"task_id": task_id, "cleared_count": cleared_count})
+        logger.info(
+            "cache_cleanup_completed",
+            extra={"task_id": task_id, "cleared_count": cleared_count},
+        )
         return {
             "status": CELERY_STATE_SUCCESS,
             "message": f"Cleared {cleared_count} cache entries",
@@ -347,7 +374,9 @@ def cache_cleanup_task(self, pattern: str = BFS_CACHE_CLEANUP_PATTERN):
         }
 
     except Exception as e:
-        logger.error("cache_cleanup_failed", extra={"task_id": task_id, "error": str(e)})
+        logger.error(
+            "cache_cleanup_failed", extra={"task_id": task_id, "error": str(e)}
+        )
         return {
             "status": CELERY_STATE_FAILURE,
             "error": str(e),

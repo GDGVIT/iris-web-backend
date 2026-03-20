@@ -91,7 +91,10 @@ def get_path_route():
 
     logger.info(
         "path_request",
-        extra={"start_page": search_request.start_page, "end_page": search_request.end_page},
+        extra={
+            "start_page": search_request.start_page,
+            "end_page": search_request.end_page,
+        },
     )
 
     task = find_path_task.delay(  # type: ignore[attr-defined]
@@ -483,7 +486,9 @@ def cancel_all_tasks():
         for task_id in task_ids:
             celery.control.revoke(task_id, terminate=terminate, signal="SIGTERM")
 
-        logger.info("all_tasks_revoked", extra={"count": len(task_ids), "terminate": terminate})
+        logger.info(
+            "all_tasks_revoked", extra={"count": len(task_ids), "terminate": terminate}
+        )
 
         return jsonify(
             {
@@ -523,7 +528,9 @@ def static_files(filename):
     try:
         return send_from_directory(_STATIC_DIR, filename)
     except Exception as e:
-        logger.error("static_serve_failed", extra={"filename": filename, "error": str(e)})
+        logger.error(
+            "static_serve_failed", extra={"filename": filename, "error": str(e)}
+        )
         return jsonify({"error": "File not found"}), 404
 
 

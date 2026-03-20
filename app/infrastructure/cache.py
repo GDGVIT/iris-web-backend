@@ -64,7 +64,9 @@ class RedisCache(CacheServiceInterface):
                     pipe.delete(key)
                 pipe.execute()
         except redis.RedisError as e:
-            logger.error("cache_delete_many_failed", extra={"keys": keys, "error": str(e)})
+            logger.error(
+                "cache_delete_many_failed", extra={"keys": keys, "error": str(e)}
+            )
             raise CacheConnectionError(f"Cache delete_many failed: {e}")
 
     def ping(self) -> bool:
@@ -149,7 +151,10 @@ class RedisCache(CacheServiceInterface):
                 return self._redis_client.delete(*keys)  # type: ignore[return-value,arg-type]
             return 0
         except redis.RedisError as e:
-            logger.error("cache_clear_pattern_failed", extra={"pattern": pattern, "error": str(e)})
+            logger.error(
+                "cache_clear_pattern_failed",
+                extra={"pattern": pattern, "error": str(e)},
+            )
             raise CacheConnectionError(f"Cache pattern clear failed: {e}")
 
 

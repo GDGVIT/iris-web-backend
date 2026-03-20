@@ -22,7 +22,9 @@ class RedisQueue(QueueInterface):
             serialized_item = json.dumps(item)
             self._redis_client.rpush(queue_name, serialized_item)
         except (redis.RedisError, TypeError, ValueError) as e:
-            logger.error("queue_push_failed", extra={"queue": queue_name, "error": str(e)})
+            logger.error(
+                "queue_push_failed", extra={"queue": queue_name, "error": str(e)}
+            )
             raise CacheConnectionError(f"Queue push failed: {e}")
 
     def pop(self, queue_name: str) -> Any | None:
@@ -33,7 +35,9 @@ class RedisQueue(QueueInterface):
                 return None
             return json.loads(item)  # type: ignore[arg-type]
         except (redis.RedisError, json.JSONDecodeError) as e:
-            logger.error("queue_pop_failed", extra={"queue": queue_name, "error": str(e)})
+            logger.error(
+                "queue_pop_failed", extra={"queue": queue_name, "error": str(e)}
+            )
             raise CacheConnectionError(f"Queue pop failed: {e}")
 
     def length(self, queue_name: str) -> int:
@@ -41,7 +45,9 @@ class RedisQueue(QueueInterface):
         try:
             return self._redis_client.llen(queue_name)  # type: ignore[return-value]
         except redis.RedisError as e:
-            logger.error("queue_length_failed", extra={"queue": queue_name, "error": str(e)})
+            logger.error(
+                "queue_length_failed", extra={"queue": queue_name, "error": str(e)}
+            )
             raise CacheConnectionError(f"Queue length check failed: {e}")
 
     def clear(self, queue_name: str) -> None:
@@ -49,7 +55,9 @@ class RedisQueue(QueueInterface):
         try:
             self._redis_client.delete(queue_name)
         except redis.RedisError as e:
-            logger.error("queue_clear_failed", extra={"queue": queue_name, "error": str(e)})
+            logger.error(
+                "queue_clear_failed", extra={"queue": queue_name, "error": str(e)}
+            )
             raise CacheConnectionError(f"Queue clear failed: {e}")
 
     def push_batch(self, queue_name: str, items: list[Any]) -> None:
@@ -63,7 +71,9 @@ class RedisQueue(QueueInterface):
                     pipe.rpush(queue_name, json.dumps(item))
                 pipe.execute()
         except (redis.RedisError, TypeError, ValueError) as e:
-            logger.error("queue_push_batch_failed", extra={"queue": queue_name, "error": str(e)})
+            logger.error(
+                "queue_push_batch_failed", extra={"queue": queue_name, "error": str(e)}
+            )
             raise CacheConnectionError(f"Queue batch push failed: {e}")
 
     def pop_batch(self, queue_name: str, count: int) -> list[Any]:
@@ -78,5 +88,7 @@ class RedisQueue(QueueInterface):
                 results = pipe.execute()
             return [json.loads(r) for r in results if r is not None]
         except (redis.RedisError, json.JSONDecodeError) as e:
-            logger.error("queue_pop_batch_failed", extra={"queue": queue_name, "error": str(e)})
+            logger.error(
+                "queue_pop_batch_failed", extra={"queue": queue_name, "error": str(e)}
+            )
             raise CacheConnectionError(f"Queue batch pop failed: {e}")

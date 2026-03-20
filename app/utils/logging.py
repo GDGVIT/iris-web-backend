@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 
 # Standard LogRecord attributes — excluded from the "extra" catch-all
@@ -47,7 +47,7 @@ class JSONFormatter(logging.Formatter):
         record.message = record.getMessage()
 
         payload: dict[str, object] = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.message,
@@ -77,7 +77,8 @@ class RequestContextFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         try:
-            from flask import g, has_request_context, request as flask_request
+            from flask import g, has_request_context
+            from flask import request as flask_request
 
             if has_request_context():
                 record.request_id = getattr(g, "request_id", "")

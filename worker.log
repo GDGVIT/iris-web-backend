@@ -1,0 +1,55 @@
+worker-1  | Starting Celery worker...
+worker-1  | {"timestamp": "2026-03-20T13:45:19.427166+00:00", "level": "INFO", "logger": "app", "message": "Logging configured", "request_id": "", "http_method": "", "http_path": "", "remote_addr": "", "log_level": "INFO"}
+worker-1  | {"timestamp": "2026-03-20T13:45:19.774255+00:00", "level": "INFO", "logger": "app.infrastructure.tasks", "message": "Celery task configuration applied", "request_id": "", "http_method": "", "http_path": "", "remote_addr": ""}
+worker-1  | {"timestamp": "2026-03-20T13:45:19.774349+00:00", "level": "INFO", "logger": "app.infrastructure.tasks", "message": "Celery periodic tasks configured", "request_id": "", "http_method": "", "http_path": "", "remote_addr": ""}
+worker-1  | {"timestamp": "2026-03-20T13:45:19.774419+00:00", "level": "INFO", "logger": "app", "message": "Celery configured successfully", "request_id": "", "http_method": "", "http_path": "", "remote_addr": ""}
+worker-1  | {"timestamp": "2026-03-20T13:45:19.777990+00:00", "level": "INFO", "logger": "app", "message": "Blueprints registered successfully", "request_id": "", "http_method": "", "http_path": "", "remote_addr": ""}
+worker-1  | {"timestamp": "2026-03-20T13:45:19.778055+00:00", "level": "INFO", "logger": "app", "message": "Error handlers registered successfully", "request_id": "", "http_method": "", "http_path": "", "remote_addr": ""}
+worker-1  | {"timestamp": "2026-03-20T13:45:19.778079+00:00", "level": "INFO", "logger": "app", "message": "app_created", "request_id": "", "http_method": "", "http_path": "", "remote_addr": "", "config": "DevelopmentConfig"}
+worker-1  | /app/.venv/lib/python3.13/site-packages/celery/platforms.py:841: SecurityWarning: You're running the worker with superuser privileges: this is
+worker-1  | absolutely not recommended!
+worker-1  | 
+worker-1  | Please specify a different user using the --uid option.
+worker-1  | 
+worker-1  | User information: uid=0 euid=0 gid=0 egid=0
+worker-1  | 
+worker-1  |   warnings.warn(SecurityWarning(ROOT_DISCOURAGED.format(
+worker-1  |  
+worker-1  |  -------------- celery@538fd2de5480 v5.6.2 (recovery)
+worker-1  | --- ***** ----- 
+worker-1  | -- ******* ---- Linux-6.12.76-linuxkit-aarch64-with-glibc2.41 2026-03-20 13:45:19
+worker-1  | - *** --- * --- 
+worker-1  | - ** ---------- [config]
+worker-1  | - ** ---------- .> app:         app:0xffff941faba0
+worker-1  | - ** ---------- .> transport:   redis://redis:6379/0
+worker-1  | - ** ---------- .> results:     redis://redis:6379/0
+worker-1  | - *** --- * --- .> concurrency: 2 (prefork)
+worker-1  | -- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+worker-1  | --- ***** ----- 
+worker-1  |  -------------- [queues]
+worker-1  |                 .> celery           exchange=celery(direct) key=celery
+worker-1  |                 .> health           exchange=health(direct) key=health
+worker-1  |                 .> maintenance      exchange=maintenance(direct) key=maintenance
+worker-1  |                 .> pathfinding      exchange=pathfinding(direct) key=pathfinding
+worker-1  | 
+worker-1  | [tasks]
+worker-1  |   . app.infrastructure.tasks.cache_cleanup_task
+worker-1  |   . app.infrastructure.tasks.find_path_task
+worker-1  |   . app.infrastructure.tasks.health_check_task
+worker-1  | 
+worker-1  | [2026-03-20 13:45:19,958: INFO/MainProcess] Connected to redis://redis:6379/0
+worker-1  | [2026-03-20 13:45:19,960: INFO/MainProcess] mingle: searching for neighbors
+worker-1  | [2026-03-20 13:45:20,972: INFO/MainProcess] mingle: all alone
+worker-1  | [2026-03-20 13:45:20,987: INFO/MainProcess] celery@538fd2de5480 ready.
+worker-1  | [2026-03-20 13:46:22,101: INFO/MainProcess] Task app.infrastructure.tasks.find_path_task[5b49a59b-1293-40dd-842e-4777fc233462] received
+worker-1  | [2026-03-20 13:46:22,102: INFO/ForkPoolWorker-1] pathfinding_started
+worker-1  | [2026-03-20 13:46:22,107: INFO/ForkPoolWorker-1] Redis client created
+worker-1  | [2026-03-20 13:46:22,107: INFO/ForkPoolWorker-1] Cache service created
+worker-1  | [2026-03-20 13:46:22,107: INFO/ForkPoolWorker-1] Wikipedia client created with caching enabled
+worker-1  | [2026-03-20 13:46:22,107: INFO/ForkPoolWorker-1] Queue service created
+worker-1  | [2026-03-20 13:46:23,057: INFO/ForkPoolWorker-1] cache_lookup
+worker-1  | [2026-03-20 13:46:24,763: INFO/ForkPoolWorker-1] cache_lookup
+worker-1  | [2026-03-20 13:46:25,331: INFO/ForkPoolWorker-1] cache_lookup
+worker-1  | [2026-03-20 13:46:32,021: INFO/ForkPoolWorker-1] path_found
+worker-1  | [2026-03-20 13:46:32,021: INFO/ForkPoolWorker-1] pathfinding_completed
+worker-1  | [2026-03-20 13:46:32,022: INFO/ForkPoolWorker-1] Task app.infrastructure.tasks.find_path_task[5b49a59b-1293-40dd-842e-4777fc233462] succeeded in 9.920763836998958s: {'status': 'SUCCESS', 'path': ['Shah Rukh Khan', 'Television film', 'Anime', 'Jujutsu Kaisen'], 'length': 4, 'start_page': 'Shah Rukh Khan', 'end_page': 'Jujutsu Kaisen', 'search_time': 8.966629266738892, 'nodes_explored': 22, 'algorithm': 'bidirectional', 'search_stats': {'nodes_explored': 22, 'final_depth': 3, 'start_page': 'Shah Rukh Khan', 'end_page': 'Jujutsu Kaisen', 'max_depth': 4, 'search_completed': True}}

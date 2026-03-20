@@ -237,7 +237,10 @@ class CacheManagementService:
         try:
             return self.cache_service.clear_pattern(pattern)
         except Exception as e:
-            logger.error("cache_clear_pattern_failed", extra={"pattern": pattern, "error": str(e)})
+            logger.error(
+                "cache_clear_pattern_failed",
+                extra={"pattern": pattern, "error": str(e)},
+            )
             return 0
 
     def get_cache_stats(self) -> dict:

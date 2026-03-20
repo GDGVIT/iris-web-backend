@@ -183,6 +183,7 @@ def test_configure_logging_writes_file_handler(tmp_path):
 
     # File handler is added to the root logger (not app.logger directly)
     has_file_handler = any(
-        h.__class__.__name__ == "RotatingFileHandler" for h in logging.getLogger().handlers
+        h.__class__.__name__ == "RotatingFileHandler"
+        for h in logging.getLogger().handlers
     )
     assert has_file_handler is True
