@@ -872,11 +872,6 @@ header p {
         min-height: 440px;
     }
 
-    /* Contain very long path lists so they don't push content off-screen */
-    .path-steps-container {
-        max-height: 60vh;
-        overflow-y: auto;
-    }
 }
 
 @media (max-width: 480px) {
