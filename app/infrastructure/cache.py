@@ -25,7 +25,7 @@ class RedisCache(CacheServiceInterface):
                 return None
             return json.loads(value)  # type: ignore[arg-type]
         except (redis.RedisError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to get value from cache for key {key}: {e}")
+            logger.error("cache_get_failed", extra={"key": key, "error": str(e)})
             raise CacheConnectionError(f"Cache get failed: {e}")
 
     def set(self, key: str, value: Any, ttl: int | None = None) -> None:
@@ -35,7 +35,7 @@ class RedisCache(CacheServiceInterface):
             serialized_value = json.dumps(value)
             self._redis_client.setex(key, ttl, serialized_value)
         except (redis.RedisError, TypeError, ValueError) as e:
-            logger.error(f"Failed to set value in cache for key {key}: {e}")
+            logger.error("cache_set_failed", extra={"key": key, "error": str(e)})
             raise CacheConnectionError(f"Cache set failed: {e}")
 
     def delete(self, key: str) -> None:
@@ -43,7 +43,7 @@ class RedisCache(CacheServiceInterface):
         try:
             self._redis_client.delete(key)
         except redis.RedisError as e:
-            logger.error(f"Failed to delete key from cache: {key}: {e}")
+            logger.error("cache_delete_failed", extra={"key": key, "error": str(e)})
             raise CacheConnectionError(f"Cache delete failed: {e}")
 
     def exists(self, key: str) -> bool:
@@ -51,7 +51,7 @@ class RedisCache(CacheServiceInterface):
         try:
             return bool(self._redis_client.exists(key))
         except redis.RedisError as e:
-            logger.error(f"Failed to check key existence in cache: {key}: {e}")
+            logger.error("cache_exists_failed", extra={"key": key, "error": str(e)})
             raise CacheConnectionError(f"Cache exists check failed: {e}")
 
     def delete_many(self, keys: list[str]) -> None:
@@ -64,7 +64,7 @@ class RedisCache(CacheServiceInterface):
                     pipe.delete(key)
                 pipe.execute()
         except redis.RedisError as e:
-            logger.error(f"Failed to delete keys {keys}: {e}")
+            logger.error("cache_delete_many_failed", extra={"keys": keys, "error": str(e)})
             raise CacheConnectionError(f"Cache delete_many failed: {e}")
 
     def ping(self) -> bool:
@@ -149,7 +149,7 @@ class RedisCache(CacheServiceInterface):
                 return self._redis_client.delete(*keys)  # type: ignore[return-value,arg-type]
             return 0
         except redis.RedisError as e:
-            logger.error(f"Failed to clear keys with pattern {pattern}: {e}")
+            logger.error("cache_clear_pattern_failed", extra={"pattern": pattern, "error": str(e)})
             raise CacheConnectionError(f"Cache pattern clear failed: {e}")
 
 
@@ -159,5 +159,5 @@ def get_redis_connection(redis_url: str) -> redis.Redis:
         pool = redis.ConnectionPool.from_url(redis_url, decode_responses=True)
         return redis.Redis(connection_pool=pool)
     except redis.RedisError as e:
-        logger.error(f"Failed to create Redis connection: {e}")
+        logger.error("redis_connection_failed", extra={"error": str(e)})
         raise CacheConnectionError(f"Redis connection failed: {e}")

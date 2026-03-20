@@ -57,7 +57,8 @@ class PathFindingService:
         cached_result = self.cache_service.get(cache_key)
         if cached_result:
             logger.info(
-                f"Path found in cache: {request.start_page} -> {request.end_page}"
+                "path_cache_hit",
+                extra={"start_page": request.start_page, "end_page": request.end_page},
             )
             return PathResult(**cached_result)
 
@@ -96,14 +97,26 @@ class PathFindingService:
             )
 
             logger.info(
-                f"Path found: {request.start_page} -> {request.end_page} (length: {len(path)}, time: {search_time:.2f}s)"
+                "path_found",
+                extra={
+                    "start_page": request.start_page,
+                    "end_page": request.end_page,
+                    "path_length": len(path),
+                    "search_time": round(search_time, 3),
+                },
             )
             return result
 
         except Exception as e:
             search_time = time.time() - start_time
             logger.error(
-                f"Pathfinding failed: {request.start_page} -> {request.end_page} (time: {search_time:.2f}s): {e}"
+                "pathfinding_failed",
+                extra={
+                    "start_page": request.start_page,
+                    "end_page": request.end_page,
+                    "search_time": round(search_time, 3),
+                    "error": str(e),
+                },
             )
             raise
 
@@ -224,7 +237,7 @@ class CacheManagementService:
         try:
             return self.cache_service.clear_pattern(pattern)
         except Exception as e:
-            logger.error(f"Failed to clear cache pattern {pattern}: {e}")
+            logger.error("cache_clear_pattern_failed", extra={"pattern": pattern, "error": str(e)})
             return 0
 
     def get_cache_stats(self) -> dict:
@@ -236,5 +249,5 @@ class CacheManagementService:
                 "message": "Cache statistics not implemented",
             }
         except Exception as e:
-            logger.error(f"Failed to get cache stats: {e}")
+            logger.error("cache_stats_failed", extra={"error": str(e)})
             return {"status": "error", "message": str(e)}

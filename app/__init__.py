@@ -1,8 +1,9 @@
 import os
+import uuid
 
 from celery import Celery
 from flasgger import Swagger
-from flask import Flask
+from flask import Flask, g
 
 from app.api.swagger import SWAGGER_CONFIG, SWAGGER_TEMPLATE
 from app.utils.constants import ERROR_INTERNAL_ERROR
@@ -50,13 +51,18 @@ def create_app(config_class=None):
     # Initialize Swagger UI
     Swagger(app, template=SWAGGER_TEMPLATE, config=SWAGGER_CONFIG)
 
+    # Attach a unique request_id to every incoming request
+    @app.before_request
+    def set_request_id():
+        g.request_id = str(uuid.uuid4())
+
     # Register blueprints
     register_blueprints(app)
 
     # Register error handlers
     register_error_handlers(app)
 
-    app.logger.info(f"Iris application created with {config_class.__name__}")
+    app.logger.info("app_created", extra={"config": config_class.__name__})
     return app
 
 
@@ -105,13 +111,13 @@ def register_error_handlers(app):
 
     @app.errorhandler(IrisBaseException)
     def handle_iris_exception(e):
-        app.logger.error(f"Iris exception: {e}")
+        app.logger.error("iris_exception", extra={"error": str(e)})
         response = {"error": True, "message": str(e), "code": e.__class__.__name__}
         return jsonify(response), 500
 
     @app.errorhandler(ValidationError)
     def handle_validation_error(e):
-        app.logger.warning(f"Validation error: {e}")
+        app.logger.warning("validation_error", extra={"error": str(e)})
         response = {
             "error": True,
             "message": "Validation failed",
@@ -136,7 +142,7 @@ def register_error_handlers(app):
 
     @app.errorhandler(500)
     def handle_internal_error(e):
-        app.logger.error(f"Internal server error: {e}")
+        app.logger.error("internal_server_error", extra={"error": str(e)})
         response = {
             "error": True,
             "message": "Internal server error",

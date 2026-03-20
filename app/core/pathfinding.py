@@ -105,7 +105,8 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
         in a single bulk Wikipedia API call per batch, minimising round-trips.
         """
         logger.info(
-            f"Starting Redis-based BFS from '{start_page}' to '{end_page}' (session: {session_id})"
+            "bfs_started",
+            extra={"start_page": start_page, "end_page": end_page, "session_id": session_id},
         )
 
         # Initialize search state
@@ -126,9 +127,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
 
             # BFS guarantees monotonically increasing depth — check on first item
             if current_depth > self.max_depth:
-                logger.warning(
-                    f"Reached maximum depth {self.max_depth}, stopping search"
-                )
+                logger.warning("max_depth_reached", extra={"max_depth": self.max_depth})
                 break
 
             # Build a per-page callback fired inside the thread pool as each
@@ -173,7 +172,8 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             # Bulk-fetch links for all pages in the batch (parallel API calls)
             page_names = [item["page"] for item in batch_items]
             logger.info(
-                f"Fetching links for batch of {len(page_names)} pages at depth {current_depth}"
+                "fetching_batch",
+                extra={"batch_size": len(page_names), "depth": current_depth},
             )
             try:
                 links_bulk = self.wikipedia_client.get_links_bulk(
@@ -184,9 +184,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                 if on_page_fetched is None:
                     nodes_explored += len(batch_items)
             except Exception as e:
-                logger.error(
-                    f"Failed to get links for batch at depth {current_depth}: {e}"
-                )
+                logger.error("batch_links_failed", extra={"depth": current_depth, "error": str(e)})
                 if isinstance(e, WikipediaAPIError | CacheConnectionError):
                     raise
                 continue
@@ -195,14 +193,15 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             for item in batch_items:
                 current_page = item["page"]
                 links = links_bulk.get(current_page, [])
-                logger.info(f"Found {len(links)} links from '{current_page}'")
+                logger.info("page_links_fetched", extra={"page": current_page, "link_count": len(links)})
 
                 for link in links:
                     if link == end_page:
                         self.cache_service.hash_set(parent_key, link, current_page)
                         final_path = self._reconstruct_path(end_page, parent_key)
                         logger.info(
-                            f"Path found! Length: {len(final_path)}, explored {nodes_explored} nodes"
+                            "path_found",
+                            extra={"path_length": len(final_path), "nodes_explored": nodes_explored},
                         )
                         return {"path": final_path, "nodes_explored": nodes_explored}
 
@@ -215,7 +214,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                             queue_key, {"page": link, "depth": item["depth"] + 1}
                         )
                     except Exception as e:
-                        logger.error(f"Redis operation failed for {link}: {e}")
+                        logger.error("redis_op_failed", extra={"link": link, "error": str(e)})
                         if isinstance(e, CacheConnectionError):
                             raise
                         continue
@@ -241,10 +240,11 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                     )
 
             logger.info(
-                f"Processed batch of {len(batch_items)} pages, queue length: {self.queue_service.length(queue_key)}"
+                "batch_processed",
+                extra={"batch_size": len(batch_items), "queue_length": self.queue_service.length(queue_key)},
             )
 
-        logger.warning(f"No path found from '{start_page}' to '{end_page}'")
+        logger.warning("path_not_found", extra={"start_page": start_page, "end_page": end_page})
         raise PathNotFoundError(start_page, end_page)
 
     def _reconstruct_path(self, node: str, parent_hash_key: str) -> list[str]:
@@ -266,7 +266,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
             self.cache_service.delete_many([queue_key, visited_key, parent_key])
             logger.info("Search state cleanup completed")
         except Exception as e:
-            logger.error(f"Failed to cleanup search state: {e}")
+            logger.error("search_cleanup_failed", extra={"error": str(e)})
 
 
 class BidirProgressAggregator:

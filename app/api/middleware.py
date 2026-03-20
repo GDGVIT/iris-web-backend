@@ -77,7 +77,7 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
                 "message": "Cache service unavailable",
                 "code": "CACHE_ERROR",
             }
-            logger.error(f"Cache error: {e}")
+            logger.error("cache_error", extra={"error": str(e)})
             return jsonify(error_response), 503
         except TaskError as e:
             error_response = {"error": True, "message": str(e), "code": "TASK_ERROR"}
@@ -95,7 +95,7 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
                 "message": "Internal server error",
                 "code": ERROR_INTERNAL_ERROR,
             }
-            logger.error(f"Unexpected error: {e}", exc_info=True)
+            logger.error("unexpected_error", extra={"error": str(e)}, exc_info=True)
             return jsonify(error_response), 500
 
     return decorated_function
@@ -108,28 +108,25 @@ def log_requests(f: Callable[..., Any]) -> Callable[..., Any]:
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         start_time = time.time()
 
-        # Log request
-        logger.info(
-            f"API Request: {request.method} {request.path} from {request.remote_addr}"
-        )
+        logger.info("request_started")
+
         if request.is_json and request.get_json():
-            logger.debug(f"Request data: {request.get_json()}")
+            logger.debug("request_body", extra={"body": request.get_json()})
 
         try:
             response = f(*args, **kwargs)
-            duration = time.time() - start_time
-
-            # Log response
+            duration_ms = round((time.time() - start_time) * 1000, 2)
             status_code = response[1] if isinstance(response, tuple) else 200
             logger.info(
-                f"API Response: {request.method} {request.path} - {status_code} ({duration:.3f}s)"
+                "request_completed",
+                extra={"http_status": status_code, "duration_ms": duration_ms},
             )
-
             return response
         except Exception as e:
-            duration = time.time() - start_time
+            duration_ms = round((time.time() - start_time) * 1000, 2)
             logger.error(
-                f"API Error: {request.method} {request.path} - Error ({duration:.3f}s): {e}"
+                "request_failed",
+                extra={"duration_ms": duration_ms, "error": str(e)},
             )
             raise
 

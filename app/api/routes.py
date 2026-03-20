@@ -90,7 +90,8 @@ def get_path_route():
     search_request = validate_request_data(SearchRequestSchema, request.get_json())
 
     logger.info(
-        f"Path request: {search_request.start_page} -> {search_request.end_page}"
+        "path_request",
+        extra={"start_page": search_request.start_page, "end_page": search_request.end_page},
     )
 
     task = find_path_task.delay(  # type: ignore[attr-defined]
@@ -261,7 +262,7 @@ def health_check():
         return jsonify(response_data), status_code
 
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error("health_check_failed", extra={"error": str(e)})
         return jsonify({"status": "unhealthy", "error": str(e)}), 503
 
 
@@ -318,7 +319,7 @@ def clear_cache():
         return jsonify(response_data), 200
 
     except Exception as e:
-        logger.error(f"Cache clear failed: {e}")
+        logger.error("cache_clear_failed", extra={"error": str(e)})
         raise
 
 
@@ -371,7 +372,7 @@ def list_tasks():
             }
         )
     except Exception as e:
-        logger.error(f"Failed to inspect Celery workers: {e}")
+        logger.error("celery_inspect_failed", extra={"error": str(e)})
         return jsonify(
             {"error": "Could not reach Celery workers", "detail": str(e)}
         ), 503
@@ -430,7 +431,7 @@ def cancel_task(task_id):
         ), 409
 
     celery.control.revoke(task_id, terminate=terminate, signal="SIGTERM")
-    logger.info(f"Revoked task {task_id} (terminate={terminate})")
+    logger.info("task_revoked", extra={"task_id": task_id, "terminate": terminate})
 
     return jsonify({"revoked": True, "task_id": task_id, "terminated": terminate})
 
@@ -482,7 +483,7 @@ def cancel_all_tasks():
         for task_id in task_ids:
             celery.control.revoke(task_id, terminate=terminate, signal="SIGTERM")
 
-        logger.info(f"Revoked {len(task_ids)} tasks (terminate={terminate})")
+        logger.info("all_tasks_revoked", extra={"count": len(task_ids), "terminate": terminate})
 
         return jsonify(
             {
@@ -492,7 +493,7 @@ def cancel_all_tasks():
             }
         )
     except Exception as e:
-        logger.error(f"Failed to cancel all tasks: {e}")
+        logger.error("cancel_all_tasks_failed", extra={"error": str(e)})
         return jsonify(
             {"error": "Could not reach Celery workers", "detail": str(e)}
         ), 503
@@ -505,7 +506,7 @@ def index():
     try:
         return send_from_directory(_STATIC_DIR, "index.html")
     except Exception as e:
-        logger.error(f"Failed to serve UI: {e}")
+        logger.error("ui_serve_failed", extra={"error": str(e)})
         return jsonify({"error": "UI not available"}), 404
 
 
@@ -522,7 +523,7 @@ def static_files(filename):
     try:
         return send_from_directory(_STATIC_DIR, filename)
     except Exception as e:
-        logger.error(f"Failed to serve static file {filename}: {e}")
+        logger.error("static_serve_failed", extra={"filename": filename, "error": str(e)})
         return jsonify({"error": "File not found"}), 404
 
 

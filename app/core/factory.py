@@ -135,7 +135,7 @@ class ServiceFactory:
             try:
                 cls._redis_client.close()
             except Exception as e:
-                logger.error(f"Error closing Redis client: {e}")
+                logger.error("redis_close_error", extra={"error": str(e)})
 
         cls._redis_client = None
         cls._cache_service = None

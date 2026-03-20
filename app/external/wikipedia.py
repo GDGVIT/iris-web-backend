@@ -87,8 +87,8 @@ class WikipediaClient(WikipediaClientInterface):
                     raise WikipediaAPIError(f"API request failed: {e}")
                 wait = 2**attempt
                 logger.warning(
-                    f"Request error (attempt {attempt + 1}/{self.max_retries}), "
-                    f"retrying in {wait}s: {e}"
+                    "request_error_retry",
+                    extra={"attempt": attempt + 1, "max_retries": self.max_retries, "wait": wait, "error": str(e)},
                 )
                 time.sleep(wait)
                 continue
@@ -100,8 +100,8 @@ class WikipediaClient(WikipediaClientInterface):
                     )
                 wait = int(response.headers.get("Retry-After", 2 ** (attempt + 1)))
                 logger.warning(
-                    f"Rate limited (429), retrying in {wait}s "
-                    f"(attempt {attempt + 1}/{self.max_retries})"
+                    "rate_limited",
+                    extra={"attempt": attempt + 1, "max_retries": self.max_retries, "wait": wait},
                 )
                 time.sleep(wait)
                 continue
@@ -113,8 +113,13 @@ class WikipediaClient(WikipediaClientInterface):
                     )
                 wait = 2**attempt
                 logger.warning(
-                    f"Server error {response.status_code} "
-                    f"(attempt {attempt + 1}/{self.max_retries}), retrying in {wait}s"
+                    "server_error_retry",
+                    extra={
+                        "status_code": response.status_code,
+                        "attempt": attempt + 1,
+                        "max_retries": self.max_retries,
+                        "wait": wait,
+                    },
                 )
                 time.sleep(wait)
                 continue
@@ -161,14 +166,15 @@ class WikipediaClient(WikipediaClientInterface):
                 cached_links = self.cache_service.get(cache_key)
                 if cached_links is not None:
                     results[title] = cached_links
-                    logger.debug(f"Cache hit for page: {title}")
+                    logger.debug("cache_hit", extra={"page": title})
                     if on_page_fetched:
                         on_page_fetched(title, cached_links)
                 else:
                     uncached_titles.append(title)
 
             logger.info(
-                f"Cache hits: {len(results)}, Cache misses: {len(uncached_titles)}"
+                "cache_lookup",
+                extra={"hits": len(results), "misses": len(uncached_titles)},
             )
         else:
             uncached_titles = page_titles
@@ -191,7 +197,7 @@ class WikipediaClient(WikipediaClientInterface):
                     except WikipediaAPIError:
                         raise
                     except Exception as e:
-                        logger.error(f"Unexpected error fetching '{title}': {e}")
+                        logger.error("page_fetch_error", extra={"page": title, "error": str(e)})
                         page_result = {title: []}
                     fresh_results.update(page_result)
                     if on_page_fetched:
@@ -202,7 +208,7 @@ class WikipediaClient(WikipediaClientInterface):
                 for title, links in fresh_results.items():
                     cache_key = f"{cache_prefix}:{title}"
                     self.cache_service.set(cache_key, links, ttl=self.cache_ttl)
-                    logger.debug(f"Cached {cache_prefix} for page: {title}")
+                    logger.debug("page_cached", extra={"cache_prefix": cache_prefix, "page": title})
 
             results.update(fresh_results)
 
@@ -364,7 +370,7 @@ class WikipediaClient(WikipediaClientInterface):
         for title in original_batch:
             if title not in results:
                 results[title] = []
-                logger.warning(f"No links found for page: {title}")
+                logger.warning("no_links_found", extra={"page": title})
 
         return results
 
@@ -394,7 +400,7 @@ class WikipediaClient(WikipediaClientInterface):
 
             return False
         except WikipediaAPIError as e:
-            logger.error(f"Failed to check page existence for {page_title}: {e}")
+            logger.error("page_existence_check_failed", extra={"page": page_title, "error": str(e)})
             return False
 
     def get_page_with_redirect_info(self, page_title: str) -> dict | None:
@@ -465,7 +471,7 @@ class WikipediaClient(WikipediaClientInterface):
             }
 
         except requests.RequestException as e:
-            logger.error(f"Failed to get page redirect info for {page_title}: {e}")
+            logger.error("page_redirect_info_failed", extra={"page": page_title, "error": str(e)})
             return {
                 "exists": False,
                 "final_title": page_title,
@@ -510,5 +516,5 @@ class WikipediaClient(WikipediaClientInterface):
 
             return None
         except requests.RequestException as e:
-            logger.error(f"Failed to get page info for {page_title}: {e}")
+            logger.error("page_info_failed", extra={"page": page_title, "error": str(e)})
             return None
