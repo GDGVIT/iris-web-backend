@@ -32,6 +32,7 @@ def handle_validation_errors(f: Callable[..., Any]) -> Callable[..., Any]:
         try:
             return f(*args, **kwargs)
         except ValidationError as e:
+            logger.warning("validation_error", extra={"details": e.messages})
             error_response = {
                 "error": True,
                 "message": "Invalid request data",
@@ -51,6 +52,7 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
         try:
             return f(*args, **kwargs)
         except PathNotFoundError as e:
+            logger.warning("path_not_found", extra={"error": str(e)})
             error_response = {
                 "error": True,
                 "message": str(e),
@@ -58,6 +60,7 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
             }
             return jsonify(error_response), 404
         except InvalidPageError as e:
+            logger.warning("invalid_page", extra={"error": str(e)})
             error_response = {
                 "error": True,
                 "message": str(e),
@@ -65,6 +68,7 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
             }
             return jsonify(error_response), 400
         except WikipediaPageNotFoundError as e:
+            logger.warning("wikipedia_page_not_found", extra={"error": str(e)})
             error_response = {
                 "error": True,
                 "message": str(e),
@@ -72,17 +76,19 @@ def handle_application_errors(f: Callable[..., Any]) -> Callable[..., Any]:
             }
             return jsonify(error_response), 404
         except CacheConnectionError as e:
+            logger.error("cache_error", extra={"error": str(e)})
             error_response = {
                 "error": True,
                 "message": "Cache service unavailable",
                 "code": "CACHE_ERROR",
             }
-            logger.error("cache_error", extra={"error": str(e)})
             return jsonify(error_response), 503
         except TaskError as e:
+            logger.error("task_error", extra={"error": str(e)})
             error_response = {"error": True, "message": str(e), "code": "TASK_ERROR"}
             return jsonify(error_response), 500
         except IrisBaseException as e:
+            logger.error("application_error", extra={"error": str(e)})
             error_response = {
                 "error": True,
                 "message": str(e),
@@ -165,7 +171,8 @@ def rate_limit(max_requests_per_hour=100):
             # For now, just log the request and continue
             client_ip = request.remote_addr
             logger.debug(
-                f"Rate limit check for {client_ip} (limit: {max_requests_per_hour}/hour)"
+                f"Rate limit check for {client_ip} "
+                f"(limit: {max_requests_per_hour}/hour)"
             )
             return f(*args, **kwargs)
 

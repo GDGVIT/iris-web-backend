@@ -25,7 +25,7 @@ class RedisQueue(QueueInterface):
             logger.error(
                 "queue_push_failed", extra={"queue": queue_name, "error": str(e)}
             )
-            raise CacheConnectionError(f"Queue push failed: {e}")
+            raise CacheConnectionError(f"Queue push failed: {e}") from e
 
     def pop(self, queue_name: str) -> Any | None:
         """Pop item from the left side of the queue (FIFO)."""
@@ -38,7 +38,7 @@ class RedisQueue(QueueInterface):
             logger.error(
                 "queue_pop_failed", extra={"queue": queue_name, "error": str(e)}
             )
-            raise CacheConnectionError(f"Queue pop failed: {e}")
+            raise CacheConnectionError(f"Queue pop failed: {e}") from e
 
     def length(self, queue_name: str) -> int:
         """Get the length of the queue."""
@@ -48,7 +48,7 @@ class RedisQueue(QueueInterface):
             logger.error(
                 "queue_length_failed", extra={"queue": queue_name, "error": str(e)}
             )
-            raise CacheConnectionError(f"Queue length check failed: {e}")
+            raise CacheConnectionError(f"Queue length check failed: {e}") from e
 
     def clear(self, queue_name: str) -> None:
         """Clear all items from the queue."""
@@ -58,7 +58,7 @@ class RedisQueue(QueueInterface):
             logger.error(
                 "queue_clear_failed", extra={"queue": queue_name, "error": str(e)}
             )
-            raise CacheConnectionError(f"Queue clear failed: {e}")
+            raise CacheConnectionError(f"Queue clear failed: {e}") from e
 
     def push_batch(self, queue_name: str, items: list[Any]) -> None:
         """Push multiple items to the queue efficiently using a pipeline."""
@@ -74,7 +74,7 @@ class RedisQueue(QueueInterface):
             logger.error(
                 "queue_push_batch_failed", extra={"queue": queue_name, "error": str(e)}
             )
-            raise CacheConnectionError(f"Queue batch push failed: {e}")
+            raise CacheConnectionError(f"Queue batch push failed: {e}") from e
 
     def pop_batch(self, queue_name: str, count: int) -> list[Any]:
         """Pop multiple items from the queue efficiently using a pipeline."""
@@ -91,4 +91,4 @@ class RedisQueue(QueueInterface):
             logger.error(
                 "queue_pop_batch_failed", extra={"queue": queue_name, "error": str(e)}
             )
-            raise CacheConnectionError(f"Queue batch pop failed: {e}")
+            raise CacheConnectionError(f"Queue batch pop failed: {e}") from e

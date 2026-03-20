@@ -309,7 +309,7 @@ def find_path_task(
             )
 
             # Re-raise to trigger Celery's retry mechanism
-            raise self.retry(exc=e)
+            raise self.retry(exc=e) from e
         else:
             logger.error(
                 "max_retries_exceeded", extra={"task_id": task_id, "error": str(e)}

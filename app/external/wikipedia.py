@@ -84,7 +84,7 @@ class WikipediaClient(WikipediaClientInterface):
                 )
             except requests.RequestException as e:
                 if attempt == self.max_retries - 1:
-                    raise WikipediaAPIError(f"API request failed: {e}")
+                    raise WikipediaAPIError(f"API request failed: {e}") from e
                 wait = 2**attempt
                 logger.warning(
                     "request_error_retry",
@@ -118,7 +118,8 @@ class WikipediaClient(WikipediaClientInterface):
             if response.status_code >= 500:
                 if attempt == self.max_retries - 1:
                     raise WikipediaAPIError(
-                        f"Server error {response.status_code} after {self.max_retries} retries"
+                        f"Server error {response.status_code} after "
+                        f"{self.max_retries} retries"
                     )
                 wait = 2**attempt
                 logger.warning(
@@ -136,7 +137,7 @@ class WikipediaClient(WikipediaClientInterface):
             try:
                 response.raise_for_status()
             except requests.HTTPError as e:
-                raise WikipediaAPIError(f"API error: {e}")
+                raise WikipediaAPIError(f"API error: {e}") from e
 
             return response
 

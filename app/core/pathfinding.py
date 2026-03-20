@@ -150,7 +150,7 @@ class RedisBasedBFSPathFinder(PathFinderInterface):
                     title: str,
                     _links: list[str],
                     *,
-                    _d: int = current_depth,  # default arg binds value at def time (B023)
+                    _d: int = current_depth,
                 ) -> None:
                     nonlocal nodes_explored
                     with nodes_lock:

@@ -29,11 +29,7 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
-ignore = [
-    "B904",   # raise-without-from-inside-except (existing style)
-    "E501",   # line too long — formatter handles length, not string literals
-    "SIM117", # nested with statements (readability preference)
-]
+ignore = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"

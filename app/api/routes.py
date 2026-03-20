@@ -287,9 +287,12 @@ def clear_cache():
               default: "wiki_links:*"
               description: |
                 Redis key pattern to clear. Must start with one of the valid prefixes:
-                - `bfs_*` — BFS session state (all transient search keys: bfs_queue:*, bfs_visited:*, bfs_parent:*, bfs_fwd_*:*, bfs_bwd_*:*)
-                - `wiki_links:*` — forward links cache (Wikipedia outbound links per page)
-                - `wiki_backlinks:*` — backlinks cache (Wikipedia inbound links per page)
+                - `bfs_*` — BFS session state (all transient search keys:
+                  bfs_queue:*, bfs_visited:*, bfs_parent:*, bfs_fwd_*:*, bfs_bwd_*:*)
+                - `wiki_links:*` — forward links cache (Wikipedia outbound links
+                  per page)
+                - `wiki_backlinks:*` — backlinks cache (Wikipedia inbound links
+                  per page)
                 - `path:*` — cached pathfinding results (keyed by start:end page pair)
                 - `page_info:*` — cached Wikipedia page metadata (existence, redirects)
     responses:
@@ -305,7 +308,10 @@ def clear_cache():
         return jsonify(
             {
                 "success": False,
-                "error": f"Pattern must start with one of: {', '.join(ALLOWED_CACHE_PREFIXES)}",
+                "error": (
+                    "Pattern must start with one of: "
+                    + ", ".join(ALLOWED_CACHE_PREFIXES)
+                ),
             }
         ), 400
 
