@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, cast
 
 import redis
 
@@ -150,7 +150,7 @@ class RedisCache(CacheServiceInterface):
             deleted = 0
             cursor = 0
             while True:
-                cursor, keys = self._redis_client.scan(cursor, match=pattern, count=100)
+                cursor, keys = cast(tuple[int, list[Any]], self._redis_client.scan(cursor, match=pattern, count=100))
                 if keys:
                     deleted += self._redis_client.delete(*keys)  # type: ignore[arg-type]
                 if cursor == 0:
