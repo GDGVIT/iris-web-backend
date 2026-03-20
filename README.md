@@ -37,8 +37,8 @@ It uses **bidirectional BFS** (default) which searches simultaneously from both 
 ## Quick Start
 
 ```bash
-git clone https://github.com/mdhishaamakhtar/iris-web-backend
-cd iris-web-backend
+git clone https://github.com/mdhishaamakhtar/iris
+cd iris
 
 uv sync
 
