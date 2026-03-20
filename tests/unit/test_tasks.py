@@ -259,7 +259,8 @@ class TestCacheCleanupTask:
             mock_mgmt.clear_cache_pattern.return_value = 7
 
             with patch(
-                "app.infrastructure.tasks.get_cache_management_service", return_value=mock_mgmt
+                "app.infrastructure.tasks.get_cache_management_service",
+                return_value=mock_mgmt,
             ):
                 result = cache_cleanup_task.apply(args=["bfs_*"]).result
             assert result["status"] == "SUCCESS"
@@ -272,7 +273,8 @@ class TestCacheCleanupTask:
             mock_mgmt.clear_cache_pattern.return_value = 0
 
             with patch(
-                "app.infrastructure.tasks.get_cache_management_service", return_value=mock_mgmt
+                "app.infrastructure.tasks.get_cache_management_service",
+                return_value=mock_mgmt,
             ):
                 result = cache_cleanup_task.apply().result
             assert result["pattern"] == "bfs_*"

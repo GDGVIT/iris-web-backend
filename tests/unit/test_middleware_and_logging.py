@@ -108,7 +108,10 @@ def test_log_requests_and_require_json(flask_app):
         resp, code = ok_handler()
         assert code == 201 and resp["ok"] is True
 
-    with pytest.raises(ValueError), make_request_context(flask_app, method="POST", json={"a": 1}):
+    with (
+        pytest.raises(ValueError),
+        make_request_context(flask_app, method="POST", json={"a": 1}),
+    ):
         err_handler()
 
     with make_request_context(flask_app, method="POST", headers={}):
