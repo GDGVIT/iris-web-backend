@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <img src="./og-image.svg" alt="Iris Preview">
+  <img src="./static/og-image.svg" alt="Iris Preview">
 </p>
 
 ## Iris Wikipedia Pathfinder
