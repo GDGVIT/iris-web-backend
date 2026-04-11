@@ -6,6 +6,10 @@
   </a>
 </p>
 
+<p align="center">
+  <img src="./og-image.svg" alt="Iris Preview">
+</p>
+
 ## Iris Wikipedia Pathfinder
 
 Iris finds a path between any two Wikipedia pages by traversing their links.
